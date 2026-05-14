@@ -17,8 +17,12 @@ export function ErrorState({
   className,
 }: ErrorStateProps) {
   return (
-    <div className={cn("flex flex-col items-center justify-center gap-3 py-16 text-center", className)}>
-      <div className="rounded-full bg-destructive/10 p-4">
+    <div
+      role="alert"
+      aria-live="assertive"
+      className={cn("flex flex-col items-center justify-center gap-3 py-16 text-center", className)}
+    >
+      <div className="rounded-full bg-destructive/10 p-4" aria-hidden="true">
         <AlertTriangle className="h-8 w-8 text-destructive" />
       </div>
       <div>

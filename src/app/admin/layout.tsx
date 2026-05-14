@@ -8,13 +8,13 @@ import {
   Users,
   Warehouse,
 } from "lucide-react";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AdminSidebar, type AdminNavItem } from "@/components/layout/admin-sidebar";
 import { APP_NAME, ROUTES } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/server";
 
-const adminNav = [
+const adminNav: AdminNavItem[] = [
   { href: ROUTES.admin.dashboard, label: "Dashboard", icon: LayoutDashboard },
   { href: ROUTES.admin.products, label: "Products", icon: Package },
   { href: ROUTES.admin.categories, label: "Categories", icon: Tag },
@@ -43,43 +43,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="flex min-h-screen">
-      {/* Sidebar */}
-      <aside className="hidden w-64 shrink-0 border-r bg-card lg:block">
-        <div className="flex h-16 items-center border-b px-6">
-          <Link href={ROUTES.admin.dashboard} className="font-bold text-primary">
-            {APP_NAME} Admin
-          </Link>
-        </div>
-        <nav className="p-4">
-          <ul className="space-y-1">
-            {adminNav.map(({ href, label, icon: Icon }) => (
-              <li key={href}>
-                <Link
-                  href={href}
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                >
-                  <Icon className="h-4 w-4" />
-                  {label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-4 border-t pt-4">
-            <Link
-              href="/"
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              ← Back to Store
-            </Link>
-          </div>
-        </nav>
-      </aside>
+      <AdminSidebar title={`${APP_NAME} Admin`} items={adminNav} />
 
-      {/* Main */}
       <div className="flex flex-1 flex-col">
-        <header className="flex h-16 items-center border-b bg-card px-6">
+        <header className="flex h-header items-center border-b bg-card px-6">
           <p className="text-sm text-muted-foreground">
-            Signed in as <span className="font-medium text-foreground">{user.email}</span>
+            Signed in as{" "}
+            <span className="font-medium text-foreground">{user.email}</span>
           </p>
         </header>
         <main className="flex-1 p-6">{children}</main>

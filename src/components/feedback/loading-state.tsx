@@ -12,28 +12,40 @@ const sizeMap = {
   lg: "h-12 w-12 border-4",
 };
 
-export function LoadingState({ className, text, size = "md" }: LoadingStateProps) {
+export function LoadingState({ className, text = "Loading…", size = "md" }: LoadingStateProps) {
   return (
-    <div className={cn("flex flex-col items-center justify-center gap-3 py-16", className)}>
+    <div
+      role="status"
+      aria-label={text}
+      className={cn("flex flex-col items-center justify-center gap-3 py-16", className)}
+    >
+      {/* Spinner is decorative — aria-label on the wrapper conveys state */}
       <div
         className={cn(
           "animate-spin rounded-full border-primary border-t-transparent",
           sizeMap[size]
         )}
-        aria-label="Loading"
+        aria-hidden="true"
       />
-      {text && <p className="text-sm text-muted-foreground">{text}</p>}
+      {text && (
+        <p className="text-sm text-muted-foreground" aria-hidden="true">
+          {text}
+        </p>
+      )}
     </div>
   );
 }
 
 export function InlineLoader({ className }: { className?: string }) {
   return (
-    <div
-      className={cn(
-        "h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent",
-        className
-      )}
-    />
+    <span role="status" aria-label="Loading" className="inline-flex">
+      <span
+        className={cn(
+          "h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent",
+          className
+        )}
+        aria-hidden="true"
+      />
+    </span>
   );
 }

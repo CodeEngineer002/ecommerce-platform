@@ -2,7 +2,7 @@
 
 import { Heart, Menu, Search, ShoppingCart, User, X } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -32,9 +32,18 @@ const navLinks = [
 
 export function Navbar({ user }: NavbarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Defer persisted store reads until after hydration.
+  // Zustand's `persist` loads localStorage synchronously on the client, so
+  // without this flag the badge counts differ between SSR (always 0) and the
+  // first client render, triggering a hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const { toggleCart, itemCount } = useCartStore();
   const wishlistCount = useWishlistStore((s) => s.items.length);
-  const count = itemCount();
+  // Show 0 on both server and first client render; real value after hydration
+  const count = mounted ? itemCount() : 0;
+  const displayWishlistCount = mounted ? wishlistCount : 0;
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
@@ -68,9 +77,9 @@ export function Navbar({ user }: NavbarProps) {
           <Button variant="ghost" size="icon" asChild className="relative">
             <Link href={ROUTES.wishlist} aria-label="Wishlist">
               <Heart className="h-5 w-5" />
-              {wishlistCount > 0 && (
+              {displayWishlistCount > 0 && (
                 <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                  {wishlistCount}
+                  {displayWishlistCount}
                 </span>
               )}
             </Link>

@@ -17,6 +17,13 @@ const config: Config = {
       },
     },
     extend: {
+      // ── Font family ────────────────────────────────────────────────────
+      fontFamily: {
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
+      },
+
+      // ── Color tokens ───────────────────────────────────────────────────
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -51,6 +58,20 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Semantic status tokens — theme-aware via CSS vars
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+        },
+        // Brand palette — full 11-step purple scale
         brand: {
           50: "#fdf4ff",
           100: "#fae8ff",
@@ -65,11 +86,33 @@ const config: Config = {
           950: "#4a044e",
         },
       },
+
+      // ── Border radius ──────────────────────────────────────────────────
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+
+      // ── Z-index scale ──────────────────────────────────────────────────
+      zIndex: {
+        dropdown: "1000",
+        sticky: "1020",
+        fixed: "1030",
+        "modal-backdrop": "1040",
+        modal: "1050",
+        popover: "1060",
+        tooltip: "1070",
+        toast: "1080",
+      },
+
+      // ── Spacing helpers ────────────────────────────────────────────────
+      spacing: {
+        sidebar: "var(--sidebar-width)",
+        header: "var(--header-height)",
+      },
+
+      // ── Animations ─────────────────────────────────────────────────────
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
@@ -83,16 +126,31 @@ const config: Config = {
           from: { opacity: "0", transform: "translateY(8px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+        "fade-in-scale": {
+          from: { opacity: "0", transform: "scale(0.95)" },
+          to: { opacity: "1", transform: "scale(1)" },
+        },
         "slide-in-right": {
           from: { transform: "translateX(100%)" },
           to: { transform: "translateX(0)" },
+        },
+        "slide-in-left": {
+          from: { transform: "translateX(-100%)" },
+          to: { transform: "translateX(0)" },
+        },
+        "pulse-soft": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.5" },
         },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "fade-in": "fade-in 0.3s ease-out",
+        "fade-in-scale": "fade-in-scale 0.2s ease-out",
         "slide-in-right": "slide-in-right 0.3s ease-out",
+        "slide-in-left": "slide-in-left 0.3s ease-out",
+        "pulse-soft": "pulse-soft 2s ease-in-out infinite",
       },
     },
   },
