@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "outDir": ".seed-dist"
+  },
+  "include": ["supabase/seed.ts"],
+  "exclude": ["node_modules"]
+}

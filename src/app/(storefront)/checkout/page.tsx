@@ -1,0 +1,238 @@
+"use client";
+
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Controller, useForm } from "react-hook-form";
+import Image from "next/image";
+import Link from "next/link";
+import { ShoppingBag } from "lucide-react";
+
+import { FormField } from "@/components/common/form-field";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Separator } from "@/components/ui/separator";
+import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST, TAX_RATE } from "@/lib/constants";
+import { checkoutSchema, type CheckoutFormData } from "@/lib/validators";
+import { formatPrice } from "@/lib/utils";
+import { useCartStore } from "@/store/cart-store";
+import { useCreateOrder } from "@/features/orders/hooks/use-orders";
+
+export default function CheckoutPage() {
+  const { items, subtotal } = useCartStore();
+  const { mutate: createOrder, isPending } = useCreateOrder();
+  const sub = subtotal();
+  const tax = Math.round(sub * TAX_RATE * 100) / 100;
+  const shipping = sub >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
+  const total = sub + tax + shipping;
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    control,
+    formState: { errors },
+  } = useForm<CheckoutFormData>({
+    resolver: zodResolver(checkoutSchema),
+    defaultValues: {
+      useSameAddress: true,
+      paymentProvider: "cod",
+    },
+  });
+
+  const useSameAddress = watch("useSameAddress");
+
+  if (items.length === 0) {
+    return (
+      <div className="container py-16">
+        <EmptyState
+          icon={ShoppingBag}
+          title="Your cart is empty"
+          action={{ label: "Go Shopping", href: ROUTES.products }}
+        />
+      </div>
+    );
+  }
+
+  const onSubmit = (data: CheckoutFormData) => {
+    createOrder({
+      cartItems: items,
+      shippingAddress: data.shippingAddress,
+      billingAddress: data.useSameAddress ? data.shippingAddress : data.billingAddress,
+      couponCode: data.couponCode,
+      paymentProvider: data.paymentProvider,
+      notes: data.notes,
+    });
+  };
+
+  return (
+    <div className="container py-8">
+      <h1 className="mb-8 text-2xl font-bold">Checkout</h1>
+      <form onSubmit={handleSubmit(onSubmit)}>
+        <div className="grid gap-8 lg:grid-cols-3">
+          {/* Left */}
+          <div className="space-y-6 lg:col-span-2">
+            {/* Shipping address */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Shipping Address</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-2">
+                <FormField label="Full Name" required error={errors.shippingAddress?.full_name} {...register("shippingAddress.full_name")} className="sm:col-span-2" />
+                <FormField label="Phone" {...register("shippingAddress.phone")} />
+                <FormField label="Address Line 1" required error={errors.shippingAddress?.address_line1} {...register("shippingAddress.address_line1")} className="sm:col-span-2" />
+                <FormField label="Address Line 2" {...register("shippingAddress.address_line2")} className="sm:col-span-2" />
+                <FormField label="City" required error={errors.shippingAddress?.city} {...register("shippingAddress.city")} />
+                <FormField label="State" required error={errors.shippingAddress?.state} {...register("shippingAddress.state")} />
+                <FormField label="Postal Code" required error={errors.shippingAddress?.postal_code} {...register("shippingAddress.postal_code")} />
+                <FormField label="Country" required {...register("shippingAddress.country")} defaultValue="IN" />
+              </CardContent>
+            </Card>
+
+            {/* Same billing address — Radix Checkbox needs Controller */}
+            <div className="flex items-center gap-2">
+              <Controller
+                name="useSameAddress"
+                control={control}
+                render={({ field }) => (
+                  <Checkbox
+                    id="same-address"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                )}
+              />
+              <Label htmlFor="same-address">Billing address same as shipping</Label>
+            </div>
+
+            {/* Billing address — shown only when different */}
+            {!useSameAddress && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Billing Address</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                  <FormField label="Full Name" required error={errors.billingAddress?.full_name} {...register("billingAddress.full_name")} className="sm:col-span-2" />
+                  <FormField label="Phone" {...register("billingAddress.phone")} />
+                  <FormField label="Address Line 1" required error={errors.billingAddress?.address_line1} {...register("billingAddress.address_line1")} className="sm:col-span-2" />
+                  <FormField label="Address Line 2" {...register("billingAddress.address_line2")} className="sm:col-span-2" />
+                  <FormField label="City" required error={errors.billingAddress?.city} {...register("billingAddress.city")} />
+                  <FormField label="State" required error={errors.billingAddress?.state} {...register("billingAddress.state")} />
+                  <FormField label="Postal Code" required error={errors.billingAddress?.postal_code} {...register("billingAddress.postal_code")} />
+                  <FormField label="Country" required {...register("billingAddress.country")} defaultValue="IN" />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Payment method — Radix RadioGroup needs Controller */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Payment Method</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Controller
+                  name="paymentProvider"
+                  control={control}
+                  render={({ field }) => (
+                    <RadioGroup value={field.value} onValueChange={field.onChange} className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="cod" id="cod" />
+                        <Label htmlFor="cod">Cash on Delivery</Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="stripe" id="stripe" />
+                        <Label htmlFor="stripe">Credit / Debit Card (Stripe)</Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="razorpay" id="razorpay" />
+                        <Label htmlFor="razorpay">Razorpay (UPI / Cards / Wallets)</Label>
+                      </div>
+                    </RadioGroup>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Coupon code */}
+            <FormField
+              label="Coupon Code"
+              placeholder="WELCOME10"
+              {...register("couponCode")}
+            />
+
+            {/* Notes */}
+            <FormField
+              as="textarea"
+              label="Order Notes (optional)"
+              placeholder="Special instructions for delivery..."
+              {...register("notes")}
+            />
+          </div>
+
+          {/* Order summary */}
+          <div className="h-fit space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Order Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <ul className="divide-y text-sm">
+                  {items.map((item) => (
+                    <li key={item.variant_id} className="flex items-center gap-3 py-2">
+                      <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
+                        {item.variant.product.images[0] && (
+                          <Image
+                            src={item.variant.product.images[0].url}
+                            alt={item.variant.product.name}
+                            fill
+                            className="object-cover"
+                            sizes="40px"
+                          />
+                        )}
+                      </div>
+                      <div className="flex-1 truncate">
+                        <p className="truncate font-medium">{item.variant.product.name}</p>
+                        {item.variant.name !== "Default" && (
+                          <p className="truncate text-xs text-muted-foreground">{item.variant.name}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                      </div>
+                      <span>
+                        {formatPrice((item.variant.price ?? item.variant.product.base_price) * item.quantity)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <Separator />
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span>{formatPrice(sub)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Tax (18% GST)</span>
+                    <span>{formatPrice(tax)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Shipping</span>
+                    <span>{shipping === 0 ? "FREE" : formatPrice(shipping)}</span>
+                  </div>
+                </div>
+                <Separator />
+                <div className="flex justify-between font-semibold">
+                  <span>Total</span>
+                  <span>{formatPrice(total)}</span>
+                </div>
+                <Button type="submit" className="w-full" size="lg" loading={isPending}>
+                  Place Order
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}

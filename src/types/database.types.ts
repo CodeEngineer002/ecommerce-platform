@@ -1,0 +1,644 @@
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
+export type Database = {
+  public: {
+    Tables: {
+      profiles: {
+        Row: {
+          id: string;
+          email: string;
+          full_name: string | null;
+          avatar_url: string | null;
+          phone: string | null;
+          role: "customer" | "admin" | "super_admin";
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          email: string;
+          full_name?: string | null;
+          avatar_url?: string | null;
+          phone?: string | null;
+          role?: "customer" | "admin" | "super_admin";
+          is_active?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Relationships: [];
+      };
+      categories: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string;
+          description: string | null;
+          image_url: string | null;
+          parent_id: string | null;
+          sort_order: number;
+          is_active: boolean;
+          seo_title: string | null;
+          seo_desc: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          name: string;
+          slug: string;
+          description?: string | null;
+          image_url?: string | null;
+          parent_id?: string | null;
+          sort_order?: number;
+          is_active?: boolean;
+          seo_title?: string | null;
+          seo_desc?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["categories"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "categories_parent_id_fkey";
+            columns: ["parent_id"];
+            isOneToOne: false;
+            referencedRelation: "categories";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      products: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string;
+          description: string | null;
+          short_desc: string | null;
+          category_id: string | null;
+          base_price: number;
+          compare_price: number | null;
+          cost_price: number | null;
+          sku: string | null;
+          barcode: string | null;
+          is_active: boolean;
+          is_featured: boolean;
+          is_digital: boolean;
+          weight: number | null;
+          tags: string[];
+          seo_title: string | null;
+          seo_desc: string | null;
+          meta_image: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          name: string;
+          slug: string;
+          base_price: number;
+          description?: string | null;
+          short_desc?: string | null;
+          category_id?: string | null;
+          compare_price?: number | null;
+          cost_price?: number | null;
+          sku?: string | null;
+          barcode?: string | null;
+          is_active?: boolean;
+          is_featured?: boolean;
+          is_digital?: boolean;
+          weight?: number | null;
+          tags?: string[];
+          seo_title?: string | null;
+          seo_desc?: string | null;
+          meta_image?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["products"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "products_category_id_fkey";
+            columns: ["category_id"];
+            isOneToOne: false;
+            referencedRelation: "categories";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      product_variants: {
+        Row: {
+          id: string;
+          product_id: string;
+          name: string;
+          sku: string | null;
+          price: number | null;
+          options: Json;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          product_id: string;
+          name: string;
+          sku?: string | null;
+          price?: number | null;
+          options?: Json;
+          is_active?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["product_variants"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "product_variants_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      product_images: {
+        Row: {
+          id: string;
+          product_id: string;
+          url: string;
+          alt_text: string | null;
+          sort_order: number;
+          is_primary: boolean;
+          created_at: string;
+        };
+        Insert: {
+          product_id: string;
+          url: string;
+          alt_text?: string | null;
+          sort_order?: number;
+          is_primary?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["product_images"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "product_images_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      inventory: {
+        Row: {
+          id: string;
+          variant_id: string;
+          quantity: number;
+          reserved: number;
+          updated_at: string;
+        };
+        Insert: {
+          variant_id: string;
+          quantity?: number;
+          reserved?: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["inventory"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "inventory_variant_id_fkey";
+            columns: ["variant_id"];
+            isOneToOne: true;
+            referencedRelation: "product_variants";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      inventory_movements: {
+        Row: {
+          id: string;
+          variant_id: string;
+          type: "purchase" | "sale" | "return" | "adjustment" | "transfer";
+          quantity: number;
+          reference_id: string | null;
+          note: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          variant_id: string;
+          type: "purchase" | "sale" | "return" | "adjustment" | "transfer";
+          quantity: number;
+          reference_id?: string | null;
+          note?: string | null;
+          created_by?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["inventory_movements"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "inventory_movements_variant_id_fkey";
+            columns: ["variant_id"];
+            isOneToOne: false;
+            referencedRelation: "product_variants";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      addresses: {
+        Row: {
+          id: string;
+          user_id: string;
+          label: string | null;
+          full_name: string;
+          phone: string | null;
+          address_line1: string;
+          address_line2: string | null;
+          city: string;
+          state: string;
+          postal_code: string;
+          country: string;
+          is_default: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          full_name: string;
+          address_line1: string;
+          city: string;
+          state: string;
+          postal_code: string;
+          country: string;
+          label?: string | null;
+          phone?: string | null;
+          address_line2?: string | null;
+          is_default?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["addresses"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "addresses_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      carts: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          session_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id?: string | null;
+          session_id?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["carts"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "carts_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      cart_items: {
+        Row: {
+          id: string;
+          cart_id: string;
+          variant_id: string;
+          quantity: number;
+          added_at: string;
+        };
+        Insert: {
+          cart_id: string;
+          variant_id: string;
+          quantity: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["cart_items"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "cart_items_cart_id_fkey";
+            columns: ["cart_id"];
+            isOneToOne: false;
+            referencedRelation: "carts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cart_items_variant_id_fkey";
+            columns: ["variant_id"];
+            isOneToOne: false;
+            referencedRelation: "product_variants";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      wishlists: {
+        Row: {
+          id: string;
+          user_id: string;
+          product_id: string;
+          added_at: string;
+        };
+        Insert: {
+          user_id: string;
+          product_id: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["wishlists"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "wishlists_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "wishlists_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      coupons: {
+        Row: {
+          id: string;
+          code: string;
+          description: string | null;
+          type: "percentage" | "fixed";
+          value: number;
+          min_order_value: number | null;
+          max_discount: number | null;
+          usage_limit: number | null;
+          used_count: number;
+          is_active: boolean;
+          valid_from: string;
+          valid_until: string | null;
+          created_at: string;
+        };
+        Insert: {
+          code: string;
+          type: "percentage" | "fixed";
+          value: number;
+          valid_from: string;
+          description?: string | null;
+          min_order_value?: number | null;
+          max_discount?: number | null;
+          usage_limit?: number | null;
+          is_active?: boolean;
+          valid_until?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["coupons"]["Insert"]>;
+        Relationships: [];
+      };
+      orders: {
+        Row: {
+          id: string;
+          order_number: string;
+          user_id: string | null;
+          status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded";
+          subtotal: number;
+          tax: number;
+          shipping: number;
+          discount: number;
+          total: number;
+          coupon_id: string | null;
+          shipping_address: Json;
+          billing_address: Json | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          order_number: string;
+          subtotal: number;
+          tax: number;
+          shipping: number;
+          discount: number;
+          total: number;
+          shipping_address: Json;
+          user_id?: string | null;
+          status?: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded";
+          coupon_id?: string | null;
+          billing_address?: Json | null;
+          notes?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["orders"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "orders_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "orders_coupon_id_fkey";
+            columns: ["coupon_id"];
+            isOneToOne: false;
+            referencedRelation: "coupons";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      order_items: {
+        Row: {
+          id: string;
+          order_id: string;
+          variant_id: string | null;
+          product_name: string;
+          variant_name: string | null;
+          sku: string | null;
+          quantity: number;
+          unit_price: number;
+          total: number;
+          snapshot: Json | null;
+        };
+        Insert: {
+          order_id: string;
+          product_name: string;
+          quantity: number;
+          unit_price: number;
+          total: number;
+          variant_id?: string | null;
+          variant_name?: string | null;
+          sku?: string | null;
+          snapshot?: Json | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["order_items"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "order_items_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "orders";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_items_variant_id_fkey";
+            columns: ["variant_id"];
+            isOneToOne: false;
+            referencedRelation: "product_variants";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      payments: {
+        Row: {
+          id: string;
+          order_id: string;
+          provider: "stripe" | "razorpay" | "cod";
+          provider_payment_id: string | null;
+          provider_order_id: string | null;
+          status: "pending" | "processing" | "succeeded" | "failed" | "refunded" | "cancelled";
+          amount: number;
+          currency: string;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          order_id: string;
+          provider: "stripe" | "razorpay" | "cod";
+          amount: number;
+          currency: string;
+          status?: "pending" | "processing" | "succeeded" | "failed" | "refunded" | "cancelled";
+          provider_payment_id?: string | null;
+          provider_order_id?: string | null;
+          metadata?: Json;
+        };
+        Update: Partial<Database["public"]["Tables"]["payments"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "payments_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "orders";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      reviews: {
+        Row: {
+          id: string;
+          product_id: string;
+          user_id: string;
+          rating: number;
+          title: string | null;
+          body: string | null;
+          is_verified: boolean;
+          is_approved: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          product_id: string;
+          user_id: string;
+          rating: number;
+          title?: string | null;
+          body?: string | null;
+          is_verified?: boolean;
+          is_approved?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["reviews"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "reviews_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reviews_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      cms_pages: {
+        Row: {
+          id: string;
+          title: string;
+          slug: string;
+          content: string | null;
+          seo_title: string | null;
+          seo_desc: string | null;
+          is_active: boolean;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          title: string;
+          slug: string;
+          content?: string | null;
+          seo_title?: string | null;
+          seo_desc?: string | null;
+          is_active?: boolean;
+          created_by?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["cms_pages"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "cms_pages_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      homepage_sections: {
+        Row: {
+          id: string;
+          type:
+            | "hero_banner"
+            | "featured_products"
+            | "promotional_banner"
+            | "category_grid"
+            | "testimonials"
+            | "newsletter";
+          title: string | null;
+          subtitle: string | null;
+          content: Json;
+          sort_order: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          type:
+            | "hero_banner"
+            | "featured_products"
+            | "promotional_banner"
+            | "category_grid"
+            | "testimonials"
+            | "newsletter";
+          content: Json;
+          title?: string | null;
+          subtitle?: string | null;
+          sort_order?: number;
+          is_active?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["homepage_sections"]["Insert"]>;
+        Relationships: [];
+      };
+    };
+    Views: Record<never, never>;
+    Functions: {
+      generate_order_number: {
+        Args: Record<never, never>;
+        Returns: string;
+      };
+      reserve_inventory: {
+        Args: { p_variant_id: string; p_quantity: number };
+        Returns: undefined;
+      };
+      increment_coupon_usage: {
+        Args: { p_coupon_id: string };
+        Returns: undefined;
+      };
+    };
+    Enums: Record<never, never>;
+    CompositeTypes: Record<never, never>;
+  };
+};
