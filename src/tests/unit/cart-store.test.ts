@@ -8,7 +8,9 @@ const mockItem: CartItemWithProduct = {
   cart_id: "cart-1",
   variant_id: "variant-1",
   quantity: 1,
+  unit_price_snapshot: null,
   added_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
   variant: {
     id: "variant-1",
     product_id: "product-1",

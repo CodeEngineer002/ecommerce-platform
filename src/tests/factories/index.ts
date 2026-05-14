@@ -127,7 +127,9 @@ export function makeCartItemWithProduct(overrides: Partial<CartItemWithProduct> 
     cart_id: "cart-1",
     variant_id: "variant-default",
     quantity: 1,
+    unit_price_snapshot: null,
     added_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
     variant: {
       id: "variant-default",
       product_id: "product-1",

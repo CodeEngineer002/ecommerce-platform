@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, ShoppingBag } from "lucide-react";
 import Image from "next/image";
+import { useParams } from "next/navigation";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 
@@ -15,12 +16,14 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { useServerCart } from "@/features/cart/hooks/use-server-cart";
+import { AddressSection } from "@/features/checkout/components/address-section";
 import { useCreateOrder } from "@/features/orders/hooks/use-orders";
 import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST, TAX_RATE } from "@/lib/constants";
 import { formatPrice } from "@/lib/utils";
 import { checkoutSchema, type CheckoutFormData } from "@/lib/validators";
 import { useCartStore } from "@/store/cart-store";
 import { useUserStore } from "@/store/user-store";
+import { countryIdToIso } from "@/domain/address/region-policy";
 
 export default function CheckoutPage() {
   // Ensure the server cart is loaded (populates serverCart in Zustand)
@@ -28,6 +31,10 @@ export default function CheckoutPage() {
   const { items, subtotal, serverCart } = useCartStore();
   const { user } = useUserStore();
   const { mutate: createOrder, isPending } = useCreateOrder();
+
+  // Derive the active country ISO code from the URL segment (e.g. /us/en → "US")
+  const params = useParams<{ country?: string }>();
+  const activeCountryIso = params?.country ? countryIdToIso(params.country) : "IN";
 
   // Prefer server-authoritative pricing when available
   const sub = serverCart ? serverCart.pricing.subtotal : subtotal();
@@ -62,6 +69,12 @@ export default function CheckoutPage() {
       setValue("shippingAddress.full_name", user.full_name, { shouldValidate: false });
     }
   }, [user?.full_name, setValue]);
+
+  // Lock country to the active storefront region (derived from URL)
+  useEffect(() => {
+    setValue("shippingAddress.country", activeCountryIso, { shouldValidate: false });
+    setValue("billingAddress.country", activeCountryIso, { shouldValidate: false });
+  }, [activeCountryIso, setValue]);
 
   const useSameAddress = watch("useSameAddress");
 
@@ -106,19 +119,16 @@ export default function CheckoutPage() {
           <div className="space-y-6 lg:col-span-2">
             {/* Shipping address */}
             <Card>
-              <CardHeader>
-                <CardTitle>Shipping Address</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4 sm:grid-cols-2">
-                <FormField label="Full Name" required error={errors.shippingAddress?.full_name} {...register("shippingAddress.full_name")} className="sm:col-span-2" />
-                <FormField label="Phone" {...register("shippingAddress.phone")} />
-                <FormField label="Address Line 1" required error={errors.shippingAddress?.address_line1} {...register("shippingAddress.address_line1")} className="sm:col-span-2" />
-                <FormField label="Address Line 2" {...register("shippingAddress.address_line2")} className="sm:col-span-2" />
-                <FormField label="City" required error={errors.shippingAddress?.city} {...register("shippingAddress.city")} />
-                <FormField label="State" required error={errors.shippingAddress?.state} {...register("shippingAddress.state")} />
-                <FormField label="Postal Code" required error={errors.shippingAddress?.postal_code} {...register("shippingAddress.postal_code")} />
-                <FormField label="Country" required {...register("shippingAddress.country")} defaultValue="IN" />
-              </CardContent>
+              <AddressSection
+                title="Shipping Address"
+                prefix="shippingAddress"
+                countryCode={activeCountryIso}
+                control={control}
+                register={register}
+                errors={errors}
+                setValue={setValue}
+                watch={watch}
+              />
             </Card>
 
             {/* Same billing address — Radix Checkbox needs Controller */}
@@ -140,19 +150,16 @@ export default function CheckoutPage() {
             {/* Billing address — shown only when different */}
             {!useSameAddress && (
               <Card>
-                <CardHeader>
-                  <CardTitle>Billing Address</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
-                  <FormField label="Full Name" required error={errors.billingAddress?.full_name} {...register("billingAddress.full_name")} className="sm:col-span-2" />
-                  <FormField label="Phone" {...register("billingAddress.phone")} />
-                  <FormField label="Address Line 1" required error={errors.billingAddress?.address_line1} {...register("billingAddress.address_line1")} className="sm:col-span-2" />
-                  <FormField label="Address Line 2" {...register("billingAddress.address_line2")} className="sm:col-span-2" />
-                  <FormField label="City" required error={errors.billingAddress?.city} {...register("billingAddress.city")} />
-                  <FormField label="State" required error={errors.billingAddress?.state} {...register("billingAddress.state")} />
-                  <FormField label="Postal Code" required error={errors.billingAddress?.postal_code} {...register("billingAddress.postal_code")} />
-                  <FormField label="Country" required {...register("billingAddress.country")} defaultValue="IN" />
-                </CardContent>
+                <AddressSection
+                  title="Billing Address"
+                  prefix="billingAddress"
+                  countryCode={activeCountryIso}
+                  control={control}
+                  register={register}
+                  errors={errors}
+                  setValue={setValue}
+                  watch={watch}
+                />
               </Card>
             )}
 

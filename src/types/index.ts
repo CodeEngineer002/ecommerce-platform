@@ -84,7 +84,8 @@ export interface AddressPayload {
   address_line1: string;
   address_line2?: string;
   city: string;
-  state: string;
+  state?: string;
+  region_code: string;
   postal_code: string;
   country: string;
 }

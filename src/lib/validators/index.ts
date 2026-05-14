@@ -1,14 +1,17 @@
 import { z } from "zod";
 
 export const addressSchema = z.object({
-  full_name: z.string().min(2, "Name must be at least 2 characters"),
-  phone: z.string().optional(),
+  full_name:     z.string().min(2, "Name must be at least 2 characters"),
+  phone:         z.string().optional(),
   address_line1: z.string().min(5, "Address is required"),
   address_line2: z.string().optional(),
-  city: z.string().min(2, "City is required"),
-  state: z.string().min(2, "State is required"),
-  postal_code: z.string().min(4, "Valid postal code required").max(10),
-  country: z.string().default("IN"),
+  city:          z.string().min(1, "City is required"),
+  /** Human-readable region name — auto-populated from region_code on submit */
+  state:         z.string().optional(),
+  /** Structured state/province/emirate code from dropdown, e.g. "CA", "MH", "DU" */
+  region_code:   z.string().min(1, "State / Province is required"),
+  postal_code:   z.string().min(1, "Postal code is required").max(12),
+  country:       z.string().length(2, "Invalid country code"),
 });
 
 export const loginSchema = z.object({

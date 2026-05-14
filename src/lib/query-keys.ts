@@ -73,4 +73,25 @@ export const queryKeys = {
     all: ["wishlist"] as const,
     items: (userId: string) => ["wishlist", "items", userId] as const,
   },
+
+  // ── Addresses ─────────────────────────────────────────────────────────────
+  addresses: {
+    all: ["addresses"] as const,
+    list: (userId: string) => ["addresses", "list", userId] as const,
+  },
+
+  // ── Address country rules (public, no user scope) ─────────────────────────
+  addressRules: {
+    all: ["address-rules"] as const,
+    byCountry: (countryId: string) => ["address-rules", countryId] as const,
+  },
+
+  // ── Location data (regions, cities) ─────────────────────────────────────
+  locations: {
+    all: ["locations"] as const,
+    regions: (countryCode: string) => ["locations", "regions", countryCode] as const,
+    cities: (countryCode: string, regionCode: string, q: string) =>
+      ["locations", "cities", countryCode, regionCode, q] as const,
+    addressRules: (countryCode: string) => ["locations", "address-rules", countryCode] as const,
+  },
 } as const;
