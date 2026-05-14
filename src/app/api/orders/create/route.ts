@@ -1,7 +1,10 @@
 import { z } from "zod";
 
-import { withApiHandler, apiSuccess, apiError } from "@/lib/api";
-import { FREE_SHIPPING_THRESHOLD, SHIPPING_COST, TAX_RATE, CURRENCY } from "@/lib/constants";
+import { CouponError, validateCoupon } from "@/domain/coupon/coupon-engine";
+import { calculatePricing } from "@/domain/pricing/pricing-engine";
+import type { LineItem } from "@/domain/pricing/types";
+import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
+import { CURRENCY } from "@/lib/constants";
 import { AuthError, InventoryError, NotFoundError } from "@/lib/errors";
 import { getPaymentProvider } from "@/lib/payment";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
@@ -22,10 +25,9 @@ const orderRequestSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
-// ── Query result types (explicit to avoid `as` casts) ────────────────────────
+// ── Query result types ────────────────────────────────────────────────────────
 type ProductRow = { id: string; name: string; base_price: number };
 type InventoryRow = { quantity: number; reserved: number };
-
 type VariantRow = {
   id: string;
   price: number | null;
@@ -39,11 +41,6 @@ function resolveProduct(product: ProductRow | ProductRow[] | null): ProductRow |
   return Array.isArray(product) ? (product[0] ?? null) : product;
 }
 
-function resolveInventory(inventory: InventoryRow | InventoryRow[] | null): InventoryRow | null {
-  if (!inventory) return null;
-  return Array.isArray(inventory) ? (inventory[0] ?? null) : inventory;
-}
-
 function getVariantPrice(variant: VariantRow): number {
   const product = resolveProduct(variant.product);
   return variant.price ?? product?.base_price ?? 0;
@@ -51,15 +48,12 @@ function getVariantPrice(variant: VariantRow): number {
 
 // ── Route handler ─────────────────────────────────────────────────────────────
 export const POST = withApiHandler(async (request: Request) => {
-  // Authenticate via cookie-based session client
   const userClient = await createClient();
   const {
     data: { user },
   } = await userClient.auth.getUser();
-
   if (!user) throw new AuthError();
 
-  // Parse and validate the request body
   const body: unknown = await request.json();
   const parsed = orderRequestSchema.safeParse(body);
   if (!parsed.success) {
@@ -74,7 +68,6 @@ export const POST = withApiHandler(async (request: Request) => {
   const { cartItems, shippingAddress, billingAddress, couponCode, paymentProvider, notes } =
     parsed.data;
 
-  // All privileged DB operations use the service client (bypasses RLS)
   const db = createServiceClient();
 
   // ── Fetch authoritative prices — never trust client-submitted prices ──────
@@ -84,139 +77,96 @@ export const POST = withApiHandler(async (request: Request) => {
     .select("id, price, is_active, product:products(id, name, base_price), inventory(quantity, reserved)")
     .in("id", variantIds);
 
-  if (variantError || !variantsRaw) {
-    throw new Error("Failed to fetch product variants");
-  }
+  if (variantError || !variantsRaw) throw new Error("Failed to fetch product variants");
 
   const variants = variantsRaw as VariantRow[];
 
-  // ── Validate availability ─────────────────────────────────────────────────
   for (const item of cartItems) {
     const variant = variants.find((v) => v.id === item.variant_id);
     if (!variant || !variant.is_active) {
       throw new NotFoundError(`Product variant ${item.variant_id} is unavailable`);
     }
-    const inv = resolveInventory(variant.inventory);
-    const available = (inv?.quantity ?? 0) - (inv?.reserved ?? 0);
-    if (available < item.quantity) {
-      throw new InventoryError("Insufficient stock for one or more items");
-    }
   }
 
-  // ── Calculate totals server-side ─────────────────────────────────────────
-  const subtotal = cartItems.reduce((sum, item) => {
+  // ── Build line items for pricing engine ──────────────────────────────────
+  const lineItems: LineItem[] = cartItems.map((item) => {
     const variant = variants.find((v) => v.id === item.variant_id)!;
-    return sum + getVariantPrice(variant) * item.quantity;
-  }, 0);
+    const product = resolveProduct(variant.product);
+    return {
+      variantId: item.variant_id,
+      quantity: item.quantity,
+      unitPrice: getVariantPrice(variant),
+      productName: product?.name ?? "Unknown",
+    };
+  });
 
-  const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
-  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
-  let discount = 0;
-  let couponId: string | null = null;
-
-  // ── Validate and apply coupon ────────────────────────────────────────────
+  // ── Validate coupon (soft pre-flight — hard lock happens inside RPC) ──────
+  let couponData = null;
   if (couponCode) {
-    const { data: coupon } = await db
-      .from("coupons")
-      .select("id, type, value, min_order_value, max_discount, usage_limit, used_count, valid_until")
-      .eq("code", couponCode.toUpperCase())
-      .eq("is_active", true)
-      .single();
-
-    if (coupon) {
-      const notExpired = !coupon.valid_until || new Date(coupon.valid_until) >= new Date();
-      const underLimit = !coupon.usage_limit || coupon.used_count < coupon.usage_limit;
-      const meetsMinimum = !coupon.min_order_value || subtotal >= coupon.min_order_value;
-
-      if (notExpired && underLimit && meetsMinimum) {
-        discount =
-          coupon.type === "percentage"
-            ? Math.round((subtotal * coupon.value) / 100)
-            : coupon.value;
-        if (coupon.max_discount) discount = Math.min(discount, coupon.max_discount);
-        couponId = coupon.id;
-      }
-    }
+    const subtotal = lineItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+    couponData = await validateCoupon(couponCode, subtotal, user.id);
   }
 
-  const total = subtotal + tax + shipping - discount;
+  // ── Calculate pricing server-side ────────────────────────────────────────
+  const pricing = calculatePricing(lineItems, couponData);
 
-  // ── Generate order number ─────────────────────────────────────────────────
-  const { data: orderNumberData } = await db.rpc("generate_order_number");
-  const orderNumber = String(orderNumberData ?? `ORD-${Date.now()}`);
-
-  // ── Create order ──────────────────────────────────────────────────────────
-  const { data: order, error: orderError } = await db
-    .from("orders")
-    .insert({
-      order_number: orderNumber,
-      user_id: user.id,
-      status: "pending",
-      subtotal,
-      tax,
-      shipping,
-      discount,
-      total,
-      coupon_id: couponId,
-      shipping_address: shippingAddress,
-      billing_address: billingAddress ?? shippingAddress,
-      notes,
-    })
-    .select()
-    .single();
-
-  if (orderError || !order) {
-    throw new Error(orderError?.message ?? "Failed to create order");
-  }
-
-  // ── Insert order items ─────────────────────────────────────────────────────
-  const orderItems = cartItems.map((item) => {
+  // ── Build cart items payload for atomic RPC ───────────────────────────────
+  const atomicCartItems = cartItems.map((item) => {
     const variant = variants.find((v) => v.id === item.variant_id)!;
     const product = resolveProduct(variant.product);
     const unitPrice = getVariantPrice(variant);
     return {
-      order_id: order.id,
       variant_id: item.variant_id,
-      product_name: product?.name ?? "Unknown",
-      sku: null,
       quantity: item.quantity,
       unit_price: unitPrice,
-      total: unitPrice * item.quantity,
+      product_name: product?.name ?? "Unknown",
+      sku: null,
       snapshot: {
         variant_id: item.variant_id,
-        product_id: product?.id,
+        product_id: product?.id ?? null,
         price_at_purchase: unitPrice,
       },
     };
   });
 
-  await db.from("order_items").insert(orderItems);
+  // ── Atomic order creation (inventory lock + order + items + coupon in one tx)
+  const { data: orderId, error: rpcError } = await db.rpc("create_order_atomic", {
+    p_user_id: user.id,
+    p_cart_items: atomicCartItems,
+    p_subtotal: pricing.subtotal,
+    p_tax: pricing.tax,
+    p_shipping: pricing.shipping,
+    p_discount: pricing.discount,
+    p_total: pricing.total,
+    p_coupon_id: couponData?.id ?? null,
+    p_coupon_code: couponCode?.toUpperCase() ?? null,
+    p_shipping_address: shippingAddress,
+    p_billing_address: billingAddress ?? shippingAddress,
+    p_notes: notes ?? null,
+  });
 
-  // ── Reserve inventory — roll back order on failure ────────────────────────
-  for (const item of cartItems) {
-    const { error: reserveError } = await db.rpc("reserve_inventory", {
-      p_variant_id: item.variant_id,
-      p_quantity: item.quantity,
-    });
-    if (reserveError) {
-      await db.from("orders").delete().eq("id", order.id);
+  if (rpcError || !orderId) {
+    const msg = rpcError?.message ?? "";
+    if (msg.includes("Insufficient stock") || rpcError?.code === "P0001") {
       throw new InventoryError("Insufficient stock. Please refresh your cart and try again.");
     }
-  }
-
-  // ── Increment coupon usage ────────────────────────────────────────────────
-  if (couponId) {
-    await db.rpc("increment_coupon_usage", { p_coupon_id: couponId });
+    if (msg.includes("Coupon usage limit exceeded") || rpcError?.code === "P0003") {
+      throw new CouponError("Coupon usage limit reached");
+    }
+    if (msg.includes("already used by this user") || rpcError?.code === "P0004") {
+      throw new CouponError("You have already used this coupon");
+    }
+    throw new Error(msg || "Failed to create order");
   }
 
   // ── Create payment record ─────────────────────────────────────────────────
   const { data: payment } = await db
     .from("payments")
     .insert({
-      order_id: order.id,
+      order_id: orderId as string,
       provider: paymentProvider,
       status: "pending",
-      amount: total,
+      amount: pricing.total,
       currency: CURRENCY,
     })
     .select()
@@ -225,19 +175,24 @@ export const POST = withApiHandler(async (request: Request) => {
   // ── COD: confirm immediately ──────────────────────────────────────────────
   if (paymentProvider === "cod") {
     await Promise.all([
-      db.from("orders").update({ status: "confirmed" }).eq("id", order.id),
+      db.rpc("update_order_status", {
+        p_order_id: orderId as string,
+        p_new_status: "confirmed",
+        p_changed_by: user.id,
+        p_reason: "Cash on delivery order auto-confirmed",
+      }),
       db.from("payments").update({ status: "succeeded" }).eq("id", payment!.id),
     ]);
-    return apiSuccess({ orderId: order.id });
+    return apiSuccess({ orderId });
   }
 
   // ── Online payment: create payment intent ─────────────────────────────────
   const provider = getPaymentProvider(paymentProvider);
   const intent = await provider.createIntent({
-    orderId: order.id,
-    amount: total,
+    orderId: orderId as string,
+    amount: pricing.total,
     currency: CURRENCY,
-    metadata: { order_number: orderNumber },
+    metadata: { order_id: orderId as string },
   });
 
   await db
@@ -246,7 +201,7 @@ export const POST = withApiHandler(async (request: Request) => {
     .eq("id", payment!.id);
 
   return apiSuccess({
-    orderId: order.id,
+    orderId,
     clientSecret: intent.clientSecret,
     providerOrderId: intent.providerOrderId,
   });

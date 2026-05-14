@@ -11,8 +11,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Stripe not configured" }, { status: 501 });
   }
 
-  // Instantiate inside the handler — module-level init runs at build time
-  // when env vars may not be present.
   const stripe = new Stripe(serverEnv.STRIPE_SECRET_KEY, {
     apiVersion: "2025-02-24.acacia",
   });
@@ -34,6 +32,21 @@ export async function POST(request: Request) {
 
   const db = createServiceClient();
 
+  // ── Idempotency check — deduplicate retried webhook deliveries ────────────
+  const idempotencyKey = event.id;
+  const { data: existing } = await db
+    .from("idempotency_keys")
+    .select("response_body")
+    .eq("key", idempotencyKey)
+    .maybeSingle();
+
+  if (existing) {
+    return NextResponse.json(existing.response_body ?? { received: true });
+  }
+
+  // ── Process event ─────────────────────────────────────────────────────────
+  let responseBody: { received: boolean; [k: string]: unknown } = { received: true };
+
   if (event.type === "payment_intent.succeeded") {
     const intent = event.data.object as Stripe.PaymentIntent;
     const orderId = intent.metadata.order_id;
@@ -43,7 +56,12 @@ export async function POST(request: Request) {
         .from("payments")
         .update({ status: "succeeded" as const, provider_payment_id: intent.id })
         .eq("provider_order_id", intent.id),
-      db.from("orders").update({ status: "confirmed" as const }).eq("id", orderId),
+      db.rpc("update_order_status", {
+        p_order_id: orderId,
+        p_new_status: "confirmed",
+        p_changed_by: null,
+        p_reason: "Payment confirmed via Stripe webhook",
+      }),
     ]);
   }
 
@@ -56,9 +74,22 @@ export async function POST(request: Request) {
         .from("payments")
         .update({ status: "failed" as const })
         .eq("provider_order_id", intent.id),
-      db.from("orders").update({ status: "cancelled" as const }).eq("id", orderId),
+      db.rpc("update_order_status", {
+        p_order_id: orderId,
+        p_new_status: "cancelled",
+        p_changed_by: null,
+        p_reason: "Payment failed via Stripe webhook",
+      }),
     ]);
   }
 
-  return NextResponse.json({ received: true });
+  // ── Persist idempotency key so retries return the same response ───────────
+  await db
+    .from("idempotency_keys")
+    .upsert(
+      { key: idempotencyKey, response_body: responseBody as unknown as import("@/types/database.types").Json },
+      { onConflict: "key", ignoreDuplicates: true },
+    );
+
+  return NextResponse.json(responseBody);
 }

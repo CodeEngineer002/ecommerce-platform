@@ -399,6 +399,7 @@ export type Database = {
           discount: number;
           total: number;
           coupon_id: string | null;
+          coupon_code: string | null;
           shipping_address: Json;
           billing_address: Json | null;
           notes: string | null;
@@ -416,6 +417,7 @@ export type Database = {
           user_id?: string | null;
           status?: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded";
           coupon_id?: string | null;
+          coupon_code?: string | null;
           billing_address?: Json | null;
           notes?: string | null;
         };
@@ -622,6 +624,56 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["homepage_sections"]["Insert"]>;
         Relationships: [];
       };
+      order_status_history: {
+        Row: {
+          id: string;
+          order_id: string;
+          from_status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded" | null;
+          to_status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded";
+          changed_by: string | null;
+          reason: string | null;
+          created_at: string;
+        };
+        Insert: {
+          order_id: string;
+          to_status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded";
+          from_status?: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded" | null;
+          changed_by?: string | null;
+          reason?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["order_status_history"]["Insert"]>;
+        Relationships: [];
+      };
+      coupon_usage: {
+        Row: {
+          id: string;
+          coupon_id: string;
+          user_id: string;
+          order_id: string | null;
+          used_at: string;
+        };
+        Insert: {
+          coupon_id: string;
+          user_id: string;
+          order_id?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["coupon_usage"]["Insert"]>;
+        Relationships: [];
+      };
+      idempotency_keys: {
+        Row: {
+          id: string;
+          key: string;
+          response_body: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          key: string;
+          response_body?: Json | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["idempotency_keys"]["Insert"]>;
+        Relationships: [];
+      };
     };
     Views: Record<never, never>;
     Functions: {
@@ -633,8 +685,46 @@ export type Database = {
         Args: { p_variant_id: string; p_quantity: number };
         Returns: undefined;
       };
+      release_inventory: {
+        Args: { p_variant_id: string; p_quantity: number };
+        Returns: undefined;
+      };
+      confirm_inventory_sale: {
+        Args: { p_variant_id: string; p_quantity: number };
+        Returns: undefined;
+      };
       increment_coupon_usage: {
         Args: { p_coupon_id: string };
+        Returns: undefined;
+      };
+      available_inventory: {
+        Args: { p_variant_id: string };
+        Returns: number;
+      };
+      create_order_atomic: {
+        Args: {
+          p_user_id: string;
+          p_cart_items: Json;
+          p_subtotal: number;
+          p_tax: number;
+          p_shipping: number;
+          p_discount: number;
+          p_total: number;
+          p_coupon_id: string | null;
+          p_coupon_code: string | null;
+          p_shipping_address: Json;
+          p_billing_address: Json;
+          p_notes: string | null;
+        };
+        Returns: string;
+      };
+      update_order_status: {
+        Args: {
+          p_order_id: string;
+          p_new_status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded";
+          p_changed_by: string | null;
+          p_reason?: string | null;
+        };
         Returns: undefined;
       };
     };

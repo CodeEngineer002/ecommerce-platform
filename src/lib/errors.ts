@@ -79,6 +79,18 @@ export class RateLimitError extends AppError {
   }
 }
 
+export class ConcurrencyError extends ConflictError {
+  constructor(message = "Request conflict — please retry", code = "CONCURRENCY_CONFLICT") {
+    super(message, code);
+  }
+}
+
+export class OrderStateError extends AppError {
+  constructor(message: string, code = "INVALID_STATE_TRANSITION") {
+    super(message, code, 409);
+  }
+}
+
 /** Narrow an unknown catch value to a safe error message string. */
 export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
