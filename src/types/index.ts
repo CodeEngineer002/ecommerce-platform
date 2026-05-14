@@ -16,8 +16,16 @@ export type Order = Database["public"]["Tables"]["orders"]["Row"];
 export type OrderItem = Database["public"]["Tables"]["order_items"]["Row"];
 export type Payment = Database["public"]["Tables"]["payments"]["Row"];
 export type Review = Database["public"]["Tables"]["reviews"]["Row"];
-export type CmsPage = Database["public"]["Tables"]["cms_pages"]["Row"];
-export type HomepageSection = Database["public"]["Tables"]["homepage_sections"]["Row"];
+// ─── Localized CMS types ───────────────────────────────────────────────────────
+export type LocalizedCmsPage = Database["public"]["Tables"]["localized_cms_pages"]["Row"];
+export type LocalizedHomepageSection = Database["public"]["Tables"]["localized_homepage_sections"]["Row"];
+export type CmsBlock = Database["public"]["Tables"]["cms_blocks"]["Row"];
+export type CmsPageVersion = Database["public"]["Tables"]["cms_page_versions"]["Row"];
+export type CmsNavigationMenu = Database["public"]["Tables"]["cms_navigation_menus"]["Row"];
+export type CmsNavigationItem = Database["public"]["Tables"]["cms_navigation_items"]["Row"];
+export type CmsBanner = Database["public"]["Tables"]["cms_banners"]["Row"];
+export type MediaAsset = Database["public"]["Tables"]["media_assets"]["Row"];
+export type MediaFolder = Database["public"]["Tables"]["media_folders"]["Row"];
 
 // ─── Enriched / composed types ────────────────────────────────────────────────
 export type ProductWithDetails = Product & {
@@ -48,7 +56,7 @@ export type PaymentStatus = Payment["status"];
 
 export type PaymentProvider = Payment["provider"];
 
-export type SectionType = HomepageSection["type"];
+export type SectionType = Database["public"]["Enums"]["section_type"];
 
 export interface PaginatedResult<T> {
   data: T[];
@@ -98,20 +106,3 @@ export interface PriceBreakdown {
   total: number;
 }
 
-export interface CmsHeroBannerContent {
-  cta_text: string;
-  cta_link: string;
-  image_url: string;
-  badge?: string;
-}
-
-export interface CmsFeaturedProductsContent {
-  limit: number;
-  product_ids?: string[];
-}
-
-export interface CmsPromotionalBannerContent {
-  bg_color?: string;
-  cta_text: string;
-  cta_link: string;
-}

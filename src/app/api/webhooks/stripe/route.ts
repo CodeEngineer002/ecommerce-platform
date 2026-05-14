@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       db.rpc("update_order_status", {
         p_order_id: orderId,
         p_new_status: "confirmed",
-        p_changed_by: null,
+        p_changed_by: "system",
         p_reason: "Payment confirmed via Stripe webhook",
       }),
     ]);
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
       db.rpc("update_order_status", {
         p_order_id: orderId,
         p_new_status: "cancelled",
-        p_changed_by: null,
+        p_changed_by: "system",
         p_reason: "Payment failed via Stripe webhook",
       }),
     ]);

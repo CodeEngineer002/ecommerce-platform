@@ -8,10 +8,11 @@ import { ProductGrid } from "@/components/ecommerce/product-grid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getHomepageSectionsServer } from "@/features/cms/services/cms.service.server";
+import { deliverHomepageSections } from "@/features/cms/delivery/cms-delivery.server";
 import { getCategories } from "@/features/products/services/category.service";
 import { getFeaturedProducts } from "@/features/products/services/product.service";
 import { APP_NAME } from "@/lib/constants";
+import { DEFAULT_COUNTRY, DEFAULT_LANGUAGE } from "@/lib/i18n/config";
 
 export const metadata: Metadata = {
   title: "Home",
@@ -112,7 +113,7 @@ function FeaturedProductsSkeleton() {
 // --- Page ---
 
 export default async function HomePage() {
-  const sections = await getHomepageSectionsServer();
+  const sections = await deliverHomepageSections(DEFAULT_COUNTRY, DEFAULT_LANGUAGE);
 
   const hero = sections.find((s) => s.type === "hero_banner");
   const heroContent = hero?.content as { cta_text?: string; cta_link?: string; image_url?: string; badge?: string } | null;

@@ -43,7 +43,7 @@ export const PATCH = withApiHandler(async (request: Request, context: { params: 
     p_order_id: id,
     p_new_status: status,
     p_changed_by: user.id,
-    p_reason: reason ?? null,
+    p_reason: reason ?? undefined,
   });
 
   if (error) {

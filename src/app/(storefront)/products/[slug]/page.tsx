@@ -128,9 +128,9 @@ export default async function ProductDetailPage({ params }: Props) {
           )}
 
           {/* Tags */}
-          {product.tags.length > 0 && (
+          {(product.tags?.length ?? 0) > 0 && (
             <div className="flex flex-wrap gap-1">
-              {product.tags.map((tag) => (
+              {(product.tags ?? []).map((tag) => (
                 <Badge key={tag} variant="secondary" className="text-xs">
                   {tag}
                 </Badge>

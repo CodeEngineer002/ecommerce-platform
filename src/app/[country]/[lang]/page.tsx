@@ -8,7 +8,7 @@ import { Suspense } from "react";
 import { ProductGrid } from "@/components/ecommerce/product-grid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getLocalizedHomepageSectionsServer } from "@/features/cms/services/cms.localized.server";
+import { deliverHomepageSections } from "@/features/cms/delivery/cms-delivery.server";
 import { getCategories } from "@/features/products/services/category.service";
 import { getFeaturedProducts } from "@/features/products/services/product.service";
 import { APP_NAME } from "@/lib/constants";
@@ -108,7 +108,7 @@ export default async function LocaleHomePage({ params }: Props) {
   const lang = rawLang as LanguageCode;
   const routes = buildLocaleRoutes({ country, lang });
   const messages = await loadMessages(lang);
-  const sections = await getLocalizedHomepageSectionsServer(country, lang);
+  const sections = await deliverHomepageSections(country, lang);
 
   const hero = sections.find((s) => s.type === "hero_banner");
   const heroContent = hero?.content as {

@@ -138,11 +138,11 @@ export const POST = withApiHandler(async (request: Request) => {
     p_shipping: pricing.shipping,
     p_discount: pricing.discount,
     p_total: pricing.total,
-    p_coupon_id: couponData?.id ?? null,
-    p_coupon_code: couponCode?.toUpperCase() ?? null,
+    p_coupon_id: couponData?.id ?? "",
+    p_coupon_code: couponCode?.toUpperCase() ?? "",
     p_shipping_address: shippingAddress,
     p_billing_address: billingAddress ?? shippingAddress,
-    p_notes: notes ?? null,
+    p_notes: notes ?? "",
   });
 
   if (rpcError || !orderId) {

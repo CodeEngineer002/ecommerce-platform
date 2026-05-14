@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { getLocalizedCmsPageServer } from "@/features/cms/services/cms.localized.server";
+import { deliverPage } from "@/features/cms/delivery/cms-delivery.server";
 import { isValidCountry, isValidLanguage, type CountryCode, type LanguageCode } from "@/lib/i18n/config";
 
 interface Props {
@@ -16,15 +16,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { country, lang, slug } = await params;
   if (!isValidCountry(country) || !isValidLanguage(lang)) return {};
 
-  const page = await getLocalizedCmsPageServer(slug, country as CountryCode, lang as LanguageCode);
+  const page = await deliverPage(slug, country as CountryCode, lang as LanguageCode);
   if (!page) return {};
 
   return {
-    title: page.seo_title ?? page.title,
-    description: page.seo_desc ?? undefined,
+    title: page.seo.title ?? page.title,
+    description: page.seo.description ?? undefined,
     openGraph: {
-      title: page.seo_title ?? page.title,
-      description: page.seo_desc ?? undefined,
+      title: page.seo.title ?? page.title,
+      description: page.seo.description ?? undefined,
     },
   };
 }
@@ -34,7 +34,7 @@ export default async function LocaleCmsPageRoute({ params }: Props) {
 
   if (!isValidCountry(country) || !isValidLanguage(lang)) notFound();
 
-  const page = await getLocalizedCmsPageServer(slug, country as CountryCode, lang as LanguageCode);
+  const page = await deliverPage(slug, country as CountryCode, lang as LanguageCode);
   if (!page) notFound();
 
   return (

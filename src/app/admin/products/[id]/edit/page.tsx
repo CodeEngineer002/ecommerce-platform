@@ -52,7 +52,7 @@ export default function EditProductPage({ params }: Props) {
           base_price: product.base_price,
           compare_price: product.compare_price ?? undefined,
           sku: product.sku ?? "",
-          tags: product.tags,
+          tags: product.tags ?? [],
           is_active: product.is_active,
           is_featured: product.is_featured,
           seo_title: product.seo_title ?? "",
