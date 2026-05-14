@@ -5,6 +5,7 @@ import Stripe from "stripe";
 
 import { serverEnv } from "@/lib/env.server";
 import { createServiceClient } from "@/lib/supabase/server";
+import type { Json } from "@/types/database.types";
 
 export async function POST(request: Request) {
   if (!serverEnv.STRIPE_SECRET_KEY || !serverEnv.STRIPE_WEBHOOK_SECRET) {
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
   }
 
   // ── Process event ─────────────────────────────────────────────────────────
-  let responseBody: { received: boolean; [k: string]: unknown } = { received: true };
+  const responseBody: { received: boolean; [k: string]: unknown } = { received: true };
 
   if (event.type === "payment_intent.succeeded") {
     const intent = event.data.object as Stripe.PaymentIntent;
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
   await db
     .from("idempotency_keys")
     .upsert(
-      { key: idempotencyKey, response_body: responseBody as unknown as import("@/types/database.types").Json },
+      { key: idempotencyKey, response_body: responseBody as unknown as Json },
       { onConflict: "key", ignoreDuplicates: true },
     );
 

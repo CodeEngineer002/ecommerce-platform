@@ -1,9 +1,9 @@
 import "server-only";
 
+import { validateCart } from "@/domain/cart/cart-validator";
 import { CouponError, validateCoupon } from "@/domain/coupon/coupon-engine";
 import { calculatePricing } from "@/domain/pricing/pricing-engine";
 import type { CartPricingWarning, CouponData, OrderPricingSnapshot, PriceBreakdown } from "@/domain/pricing/types";
-import { validateCart } from "@/domain/cart/cart-validator";
 import { CURRENCY } from "@/lib/constants";
 import { ValidationError } from "@/lib/errors";
 

@@ -13,7 +13,7 @@ export async function adminGetProducts(page = 1) {
     .select(
       `
       *,
-      category:categories(id, name),
+      category:categories!products_category_id_fkey(id, name),
       images:product_images(id, url, is_primary, sort_order),
       variants:product_variants(id, name, sku, price, is_active, inventory(quantity, reserved))
     `,
@@ -37,7 +37,7 @@ export async function adminGetProduct(id: string) {
     .select(
       `
       *,
-      category:categories(*),
+      category:categories!products_category_id_fkey(*),
       images:product_images(*, sort_order),
       variants:product_variants(*, inventory(*))
     `

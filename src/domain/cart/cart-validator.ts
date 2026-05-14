@@ -1,9 +1,9 @@
 import "server-only";
 
+import type { CartPricingError, CartPricingItem, CartPricingWarning } from "@/domain/pricing/types";
 import { CART_MAX_QUANTITY } from "@/lib/constants";
 import { createServiceClient } from "@/lib/supabase/server";
 
-import type { CartPricingError, CartPricingItem, CartPricingWarning } from "@/domain/pricing/types";
 
 export interface CartValidationInput {
   variantId: string;

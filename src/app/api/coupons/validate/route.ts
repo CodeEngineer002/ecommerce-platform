@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { CouponError, validateCoupon } from "@/domain/coupon/coupon-engine";
+import { validateCoupon } from "@/domain/coupon/coupon-engine";
 import { calculateDiscount } from "@/domain/pricing/pricing-engine";
 import { apiSuccess, withApiHandler } from "@/lib/api";
 import { AuthError } from "@/lib/errors";

@@ -52,7 +52,7 @@ export interface RefundCalculation {
  */
 export function calculateRefund(input: RefundCalculationInput): RefundCalculation {
   const {
-    orderSubtotal,
+    orderSubtotal: _orderSubtotal,
     orderShipping,
     orderTaxRate = TAX_RATE,
     orderItems,

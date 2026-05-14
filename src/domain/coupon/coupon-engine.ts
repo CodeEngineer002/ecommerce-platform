@@ -1,9 +1,9 @@
 import "server-only";
 
+import type { CouponData } from "@/domain/pricing/types";
 import { AppError } from "@/lib/errors";
 import { createServiceClient } from "@/lib/supabase/server";
 
-import type { CouponData } from "@/domain/pricing/types";
 
 export class CouponError extends AppError {
   constructor(message: string, code = "COUPON_INVALID") {

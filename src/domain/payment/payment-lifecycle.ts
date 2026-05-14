@@ -1,12 +1,13 @@
 import "server-only";
 
-import { PaymentVerificationFailedError } from "@/lib/errors";
-import { createServiceClient } from "@/lib/supabase/server";
-
 import {
   assertPaymentTransition,
   type PaymentLifecycleStatus,
 } from "@/domain/order/order-state-machine";
+import { PaymentVerificationFailedError } from "@/lib/errors";
+import { createServiceClient } from "@/lib/supabase/server";
+import type { Json } from "@/types/database.types";
+
 
 export interface PaymentEventData {
   paymentId: string;
@@ -38,7 +39,7 @@ export async function recordPaymentEvent(data: PaymentEventData): Promise<void> 
     event_type: data.eventType,
     provider: data.provider,
     amount: data.amount ?? null,
-    payload: (data.payload as unknown as import("@/types/database.types").Json) ?? null,
+    payload: (data.payload as unknown as Json) ?? null,
   });
 }
 

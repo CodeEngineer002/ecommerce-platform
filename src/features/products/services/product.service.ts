@@ -4,7 +4,7 @@ import type { PaginatedResult, ProductFilters, ProductWithDetails } from "@/type
 // Single source of truth for the product join shape
 const PRODUCT_SELECT = `
   *,
-  category:categories(*),
+  category:categories!products_category_id_fkey(*),
   images:product_images(*),
   variants:product_variants(*, inventory(*))
 ` as const;

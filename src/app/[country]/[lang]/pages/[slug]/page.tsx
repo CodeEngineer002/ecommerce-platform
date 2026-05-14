@@ -1,22 +1,22 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { getCmsPageServer, getCmsPagesServer } from "@/features/cms/services/cms.service.server";
+import { getLocalizedCmsPageServer } from "@/features/cms/services/cms.localized.server";
+import { isValidCountry, isValidLanguage, type CountryCode, type LanguageCode } from "@/lib/i18n/config";
 
 interface Props {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ country: string; lang: string; slug: string }>;
 }
 
 export async function generateStaticParams() {
-  const pages = await getCmsPagesServer();
-  return pages
-    .filter((p) => p.is_active)
-    .map((p) => ({ slug: p.slug }));
+  return [];
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { slug } = await params;
-  const page = await getCmsPageServer(slug);
+  const { country, lang, slug } = await params;
+  if (!isValidCountry(country) || !isValidLanguage(lang)) return {};
+
+  const page = await getLocalizedCmsPageServer(slug, country as CountryCode, lang as LanguageCode);
   if (!page) return {};
 
   return {
@@ -29,10 +29,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function CmsPageRoute({ params }: Props) {
-  const { slug } = await params;
-  const page = await getCmsPageServer(slug);
+export default async function LocaleCmsPageRoute({ params }: Props) {
+  const { country, lang, slug } = await params;
 
+  if (!isValidCountry(country) || !isValidLanguage(lang)) notFound();
+
+  const page = await getLocalizedCmsPageServer(slug, country as CountryCode, lang as LanguageCode);
   if (!page) notFound();
 
   return (
