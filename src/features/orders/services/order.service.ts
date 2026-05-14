@@ -1,5 +1,6 @@
 import { calculatePricing } from "@/domain/pricing/pricing-engine";
 import type { LineItem } from "@/domain/pricing/types";
+import { apiFetch } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 import type { CheckoutPayload, OrderWithItems } from "@/types";
 
@@ -40,9 +41,9 @@ export async function getOrderById(orderId: string): Promise<OrderWithItems | nu
 
 export function calculatePriceBreakdown(items: { quantity: number; price: number }[]) {
   const lineItems: LineItem[] = items.map((i) => ({
-    variantId: "",
-    quantity: i.quantity,
-    unitPrice: i.price,
+    variantId:   "",
+    quantity:    i.quantity,
+    unitPrice:   i.price,
     productName: "",
   }));
   const { subtotal, tax, shipping, discount, total } = calculatePricing(lineItems);
@@ -51,9 +52,9 @@ export function calculatePriceBreakdown(items: { quantity: number; price: number
 
 export async function createOrder(payload: CheckoutPayload): Promise<string> {
   const res = await fetch("/api/orders/create", {
-    method: "POST",
+    method:  "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body:    JSON.stringify(payload),
   });
 
   if (!res.ok) {
@@ -63,4 +64,47 @@ export async function createOrder(payload: CheckoutPayload): Promise<string> {
 
   const { data } = await res.json();
   return data.orderId;
+}
+
+export async function cancelOrder(orderId: string, reason?: string): Promise<void> {
+  await apiFetch(`/api/orders/${orderId}/cancel`, {
+    method: "POST",
+    body:   JSON.stringify({ reason }),
+  });
+}
+
+export interface ReturnItem {
+  order_item_id: string;
+  quantity:      number;
+  reason?:       string;
+  condition?:    "unopened" | "good" | "damaged" | "defective";
+}
+
+export async function createReturnRequest(
+  orderId: string,
+  reason:  string,
+  items:   ReturnItem[],
+): Promise<string> {
+  const { data } = await apiFetch<{ returnId: string }>(`/api/orders/${orderId}/returns`, {
+    method: "POST",
+    body:   JSON.stringify({ reason, items }),
+  });
+  return data.returnId;
+}
+
+export async function getReturnRequests(orderId: string) {
+  const { data } = await apiFetch<unknown[]>(`/api/orders/${orderId}/returns`);
+  return data;
+}
+
+export async function getOrderFulfillment(orderId: string) {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("order_fulfillments")
+    .select("*")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data;
 }

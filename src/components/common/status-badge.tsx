@@ -16,7 +16,7 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
-  const config = ORDER_STATUSES[status];
+  const config = ORDER_STATUSES[status] ?? { label: status.replace(/_/g, " "), color: "gray" };
   return (
     <Badge variant={variantMap[config.color] ?? "default"}>
       {config.label}

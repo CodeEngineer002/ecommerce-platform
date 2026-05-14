@@ -3539,6 +3539,330 @@ export type Database = {
           },
         ]
       }
+      order_returns: {
+        Row: {
+          id: string
+          order_id: string
+          user_id: string
+          status: string
+          reason: string
+          notes: string | null
+          total_refund_amount: number | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          review_note: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          user_id: string
+          status?: string
+          reason: string
+          notes?: string | null
+          total_refund_amount?: number | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          review_note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          order_id?: string
+          user_id?: string
+          status?: string
+          reason?: string
+          notes?: string | null
+          total_refund_amount?: number | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          review_note?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      order_return_items: {
+        Row: {
+          id: string
+          return_id: string
+          order_item_id: string
+          quantity: number
+          reason: string | null
+          condition: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          return_id: string
+          order_item_id: string
+          quantity: number
+          reason?: string | null
+          condition?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          quantity?: number
+          reason?: string | null
+          condition?: string | null
+        }
+        Relationships: []
+      }
+      replacements: {
+        Row: {
+          id: string
+          order_id: string
+          return_id: string | null
+          user_id: string
+          status: string
+          reason: string | null
+          tracking_number: string | null
+          carrier: string | null
+          notes: string | null
+          processed_by: string | null
+          shipped_at: string | null
+          delivered_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          return_id?: string | null
+          user_id: string
+          status?: string
+          reason?: string | null
+          tracking_number?: string | null
+          carrier?: string | null
+          notes?: string | null
+          processed_by?: string | null
+          shipped_at?: string | null
+          delivered_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          status?: string
+          tracking_number?: string | null
+          carrier?: string | null
+          notes?: string | null
+          shipped_at?: string | null
+          delivered_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      replacement_items: {
+        Row: {
+          id: string
+          replacement_id: string
+          order_item_id: string
+          new_variant_id: string | null
+          quantity: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          replacement_id: string
+          order_item_id: string
+          new_variant_id?: string | null
+          quantity: number
+          created_at?: string
+        }
+        Update: {
+          new_variant_id?: string | null
+          quantity?: number
+        }
+        Relationships: []
+      }
+      refunds: {
+        Row: {
+          id: string
+          order_id: string
+          return_id: string | null
+          payment_id: string | null
+          amount: number
+          currency: string
+          status: string
+          refund_type: string
+          provider_refund_id: string | null
+          reason: string | null
+          processed_by: string | null
+          processed_at: string | null
+          failed_reason: string | null
+          metadata: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          return_id?: string | null
+          payment_id?: string | null
+          amount: number
+          currency?: string
+          status?: string
+          refund_type?: string
+          provider_refund_id?: string | null
+          reason?: string | null
+          processed_by?: string | null
+          processed_at?: string | null
+          failed_reason?: string | null
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          status?: string
+          provider_refund_id?: string | null
+          failed_reason?: string | null
+          metadata?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      refund_line_items: {
+        Row: {
+          id: string
+          refund_id: string
+          order_item_id: string
+          quantity: number
+          amount: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          refund_id: string
+          order_item_id: string
+          quantity: number
+          amount: number
+          created_at?: string
+        }
+        Update: {
+          quantity?: number
+          amount?: number
+        }
+        Relationships: []
+      }
+      order_fulfillments: {
+        Row: {
+          id: string
+          order_id: string
+          status: string
+          carrier: string | null
+          tracking_number: string | null
+          tracking_url: string | null
+          notes: string | null
+          packed_at: string | null
+          shipped_at: string | null
+          estimated_delivery: string | null
+          delivered_at: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          status?: string
+          carrier?: string | null
+          tracking_number?: string | null
+          tracking_url?: string | null
+          notes?: string | null
+          packed_at?: string | null
+          shipped_at?: string | null
+          estimated_delivery?: string | null
+          delivered_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          status?: string
+          carrier?: string | null
+          tracking_number?: string | null
+          tracking_url?: string | null
+          notes?: string | null
+          packed_at?: string | null
+          shipped_at?: string | null
+          estimated_delivery?: string | null
+          delivered_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      fulfillment_items: {
+        Row: {
+          id: string
+          fulfillment_id: string
+          order_item_id: string
+          quantity: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          fulfillment_id: string
+          order_item_id: string
+          quantity: number
+          created_at?: string
+        }
+        Update: {
+          quantity?: number
+        }
+        Relationships: []
+      }
+      admin_order_notes: {
+        Row: {
+          id: string
+          order_id: string
+          author_id: string
+          content: string
+          is_internal: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          author_id: string
+          content: string
+          is_internal?: boolean
+          created_at?: string
+        }
+        Update: {
+          content?: string
+          is_internal?: boolean
+        }
+        Relationships: []
+      }
+      order_events: {
+        Row: {
+          id: string
+          order_id: string
+          event_type: string
+          actor_id: string | null
+          actor_type: string | null
+          description: string
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          event_type: string
+          actor_id?: string | null
+          actor_type?: string | null
+          description: string
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          description?: string
+          metadata?: Json
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -3614,6 +3938,77 @@ export type Database = {
         }
         Returns: undefined
       }
+      cancel_order: {
+        Args: {
+          p_order_id: string
+          p_user_id: string
+          p_reason?: string | null
+          p_actor_type?: string
+        }
+        Returns: undefined
+      }
+      request_return: {
+        Args: {
+          p_order_id: string
+          p_user_id: string
+          p_reason: string
+          p_items: Json
+        }
+        Returns: string
+      }
+      approve_return: {
+        Args: {
+          p_return_id: string
+          p_admin_id: string
+          p_note?: string | null
+        }
+        Returns: undefined
+      }
+      reject_return: {
+        Args: {
+          p_return_id: string
+          p_admin_id: string
+          p_reason: string
+        }
+        Returns: undefined
+      }
+      record_refund: {
+        Args: {
+          p_order_id: string
+          p_payment_id: string
+          p_amount: number
+          p_refund_type: string
+          p_admin_id: string
+          p_reason?: string | null
+          p_return_id?: string | null
+          p_provider_refund_id?: string | null
+        }
+        Returns: string
+      }
+      create_fulfillment: {
+        Args: {
+          p_order_id: string
+          p_admin_id: string
+          p_carrier?: string | null
+          p_tracking_number?: string | null
+          p_tracking_url?: string | null
+          p_estimated_delivery?: string | null
+          p_notes?: string | null
+        }
+        Returns: string
+      }
+      update_fulfillment_tracking: {
+        Args: {
+          p_fulfillment_id: string
+          p_admin_id: string
+          p_carrier?: string | null
+          p_tracking_number?: string | null
+          p_tracking_url?: string | null
+          p_status?: string | null
+          p_estimated_delivery?: string | null
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       fulfillment_status:
@@ -3636,12 +4031,27 @@ export type Database = {
         | "pending_payment"
         | "confirmed"
         | "processing"
+        | "packed"
         | "shipped"
+        | "out_for_delivery"
         | "delivered"
-        | "partially_returned"
         | "cancelled"
-        | "refunded"
+        | "failed"
+        | "return_requested"
+        | "return_approved"
+        | "return_rejected"
+        | "return_in_transit"
+        | "returned"
+        | "replacement_requested"
+        | "replacement_approved"
+        | "replacement_rejected"
+        | "replacement_shipped"
+        | "replacement_delivered"
+        | "refund_requested"
+        | "refund_processing"
+        | "partially_returned"
         | "partially_refunded"
+        | "refunded"
       payment_provider: "stripe" | "razorpay" | "cod"
       payment_status:
         | "pending"

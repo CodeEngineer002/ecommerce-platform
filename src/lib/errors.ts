@@ -133,7 +133,7 @@ export class PaymentVerificationFailedError extends PaymentError {
   }
 }
 
-// ── Returns / Refunds ─────────────────────────────────────────────────────────
+// ── Returns / Refunds / Replacements ─────────────────────────────────────────
 export class ReturnNotEligibleError extends AppError {
   constructor(reason: string) {
     super(reason, "RETURN_NOT_ELIGIBLE", 422);
@@ -143,6 +143,18 @@ export class ReturnNotEligibleError extends AppError {
 export class RefundNotAllowedError extends AppError {
   constructor(reason: string) {
     super(reason, "REFUND_NOT_ALLOWED", 422);
+  }
+}
+
+export class ReplacementNotAllowedError extends AppError {
+  constructor(reason: string) {
+    super(reason, "REPLACEMENT_NOT_ALLOWED", 422);
+  }
+}
+
+export class FulfillmentError extends AppError {
+  constructor(reason: string, code = "FULFILLMENT_ERROR") {
+    super(reason, code, 422);
   }
 }
 
