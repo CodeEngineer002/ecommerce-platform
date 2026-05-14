@@ -8,7 +8,7 @@ import { ProductGrid } from "@/components/ecommerce/product-grid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getHomepageSections } from "@/features/cms/services/cms.service";
+import { getHomepageSectionsServer } from "@/features/cms/services/cms.service.server";
 import { getCategories } from "@/features/products/services/category.service";
 import { getFeaturedProducts } from "@/features/products/services/product.service";
 import { APP_NAME } from "@/lib/constants";
@@ -112,7 +112,7 @@ function FeaturedProductsSkeleton() {
 // --- Page ---
 
 export default async function HomePage() {
-  const sections = await getHomepageSections();
+  const sections = await getHomepageSectionsServer();
 
   const hero = sections.find((s) => s.type === "hero_banner");
   const heroContent = hero?.content as { cta_text?: string; cta_link?: string; image_url?: string; badge?: string } | null;

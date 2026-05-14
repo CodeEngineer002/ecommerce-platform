@@ -15,12 +15,16 @@ export const MAX_PAGE_SIZE = 48;
 export const CART_MAX_QUANTITY = 10;
 
 export const ORDER_STATUSES = {
+  draft: { label: "Draft", color: "gray" },
   pending: { label: "Pending", color: "yellow" },
+  pending_payment: { label: "Awaiting Payment", color: "yellow" },
   confirmed: { label: "Confirmed", color: "blue" },
   processing: { label: "Processing", color: "blue" },
   shipped: { label: "Shipped", color: "purple" },
   delivered: { label: "Delivered", color: "green" },
   cancelled: { label: "Cancelled", color: "red" },
+  partially_returned: { label: "Partially Returned", color: "orange" },
+  partially_refunded: { label: "Partially Refunded", color: "orange" },
   refunded: { label: "Refunded", color: "gray" },
 } as const;
 

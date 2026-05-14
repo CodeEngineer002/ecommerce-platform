@@ -1,32 +1,44 @@
 "use client";
 
+import {
+  BarChart3,
+  FileText,
+  LayoutDashboard,
+  Package,
+  ShoppingBag,
+  Tag,
+  Users,
+  Warehouse,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
+import { ROUTES } from "@/lib/constants";
 
-export interface AdminNavItem {
+interface AdminNavItem {
   href: string;
   label: string;
   icon: LucideIcon;
 }
 
+const adminNav: AdminNavItem[] = [
+  { href: ROUTES.admin.dashboard, label: "Dashboard", icon: LayoutDashboard },
+  { href: ROUTES.admin.products, label: "Products", icon: Package },
+  { href: ROUTES.admin.categories, label: "Categories", icon: Tag },
+  { href: ROUTES.admin.orders, label: "Orders", icon: ShoppingBag },
+  { href: ROUTES.admin.customers, label: "Customers", icon: Users },
+  { href: ROUTES.admin.inventory, label: "Inventory", icon: Warehouse },
+  { href: ROUTES.admin.analytics, label: "Analytics", icon: BarChart3 },
+  { href: ROUTES.admin.cms, label: "CMS", icon: FileText },
+];
+
 interface AdminSidebarProps {
   title: string;
-  items: AdminNavItem[];
 }
 
-/**
- * AdminSidebar — navigation sidebar with active-state highlighting.
- *
- * - Uses usePathname() to highlight the current page link
- * - Sets aria-current="page" on the active item for screen readers
- * - Icons are aria-hidden (label text is the accessible name)
- * - Keyboard navigation follows standard <a> focus order
- * - Hidden on mobile (lg:block) — pair with a mobile menu if needed
- */
-export function AdminSidebar({ title, items }: AdminSidebarProps) {
+export function AdminSidebar({ title }: AdminSidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -34,7 +46,6 @@ export function AdminSidebar({ title, items }: AdminSidebarProps) {
       className="hidden w-sidebar shrink-0 border-r bg-card lg:block"
       aria-label="Admin navigation"
     >
-      {/* Brand header */}
       <div className="flex h-header items-center border-b px-6">
         <Link
           href="/admin"
@@ -46,8 +57,7 @@ export function AdminSidebar({ title, items }: AdminSidebarProps) {
 
       <nav className="p-4">
         <ul className="space-y-1" role="list">
-          {items.map(({ href, label, icon: Icon }) => {
-            // Exact match for /admin; prefix match for all sub-routes
+          {adminNav.map(({ href, label, icon: Icon }) => {
             const isActive =
               href === "/admin"
                 ? pathname === "/admin"

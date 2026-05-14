@@ -208,6 +208,10 @@ export type Database = {
           variant_id: string;
           type: "purchase" | "sale" | "return" | "adjustment" | "transfer";
           quantity: number;
+          previous_quantity: number | null;
+          new_quantity: number | null;
+          source_type: string | null;
+          source_id: string | null;
           reference_id: string | null;
           note: string | null;
           created_by: string | null;
@@ -217,6 +221,10 @@ export type Database = {
           variant_id: string;
           type: "purchase" | "sale" | "return" | "adjustment" | "transfer";
           quantity: number;
+          previous_quantity?: number | null;
+          new_quantity?: number | null;
+          source_type?: string | null;
+          source_id?: string | null;
           reference_id?: string | null;
           note?: string | null;
           created_by?: string | null;
@@ -392,7 +400,9 @@ export type Database = {
           id: string;
           order_number: string;
           user_id: string | null;
-          status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded";
+          status: "draft" | "pending" | "pending_payment" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "partially_returned" | "partially_refunded" | "refunded";
+          fulfillment_status: "unfulfilled" | "processing" | "partially_fulfilled" | "fulfilled" | "shipped" | "delivered" | "failed";
+          shipping_method: string | null;
           subtotal: number;
           tax: number;
           shipping: number;
@@ -415,7 +425,9 @@ export type Database = {
           total: number;
           shipping_address: Json;
           user_id?: string | null;
-          status?: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded";
+          status?: "draft" | "pending" | "pending_payment" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "partially_returned" | "partially_refunded" | "refunded";
+          fulfillment_status?: "unfulfilled" | "processing" | "partially_fulfilled" | "fulfilled" | "shipped" | "delivered" | "failed";
+          shipping_method?: string | null;
           coupon_id?: string | null;
           coupon_code?: string | null;
           billing_address?: Json | null;
@@ -628,8 +640,8 @@ export type Database = {
         Row: {
           id: string;
           order_id: string;
-          from_status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded" | null;
-          to_status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded";
+          from_status: "draft" | "pending" | "pending_payment" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "partially_returned" | "partially_refunded" | "refunded" | null;
+          to_status: "draft" | "pending" | "pending_payment" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "partially_returned" | "partially_refunded" | "refunded";
           changed_by: string | null;
           reason: string | null;
           created_at: string;
@@ -672,6 +684,108 @@ export type Database = {
           response_body?: Json | null;
         };
         Update: Partial<Database["public"]["Tables"]["idempotency_keys"]["Insert"]>;
+        Relationships: [];
+      };
+      return_requests: {
+        Row: {
+          id: string;
+          order_id: string;
+          user_id: string;
+          status: "pending" | "approved" | "rejected" | "completed" | "cancelled";
+          reason: string;
+          notes: string | null;
+          admin_notes: string | null;
+          reviewed_by: string | null;
+          reviewed_at: string | null;
+          return_window_expires_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          order_id: string;
+          user_id: string;
+          reason: string;
+          status?: "pending" | "approved" | "rejected" | "completed" | "cancelled";
+          notes?: string | null;
+          admin_notes?: string | null;
+          reviewed_by?: string | null;
+          reviewed_at?: string | null;
+          return_window_expires_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["return_requests"]["Insert"]>;
+        Relationships: [];
+      };
+      return_items: {
+        Row: {
+          id: string;
+          return_request_id: string;
+          order_item_id: string;
+          quantity: number;
+          reason: string | null;
+          condition: "new" | "good" | "damaged" | "defective" | null;
+          restock: boolean;
+          refund_amount: number | null;
+          created_at: string;
+        };
+        Insert: {
+          return_request_id: string;
+          order_item_id: string;
+          quantity: number;
+          reason?: string | null;
+          condition?: "new" | "good" | "damaged" | "defective" | null;
+          restock?: boolean;
+          refund_amount?: number | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["return_items"]["Insert"]>;
+        Relationships: [];
+      };
+      payment_events: {
+        Row: {
+          id: string;
+          payment_id: string;
+          order_id: string;
+          event_type: string;
+          provider: string;
+          amount: number | null;
+          payload: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          payment_id: string;
+          order_id: string;
+          event_type: string;
+          provider: string;
+          amount?: number | null;
+          payload?: Json | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["payment_events"]["Insert"]>;
+        Relationships: [];
+      };
+      shipment_tracking: {
+        Row: {
+          id: string;
+          order_id: string;
+          carrier: string | null;
+          tracking_number: string | null;
+          tracking_url: string | null;
+          status: string;
+          estimated_delivery: string | null;
+          delivered_at: string | null;
+          events: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          order_id: string;
+          carrier?: string | null;
+          tracking_number?: string | null;
+          tracking_url?: string | null;
+          status?: string;
+          estimated_delivery?: string | null;
+          delivered_at?: string | null;
+          events?: Json;
+        };
+        Update: Partial<Database["public"]["Tables"]["shipment_tracking"]["Insert"]>;
         Relationships: [];
       };
     };
@@ -721,9 +835,31 @@ export type Database = {
       update_order_status: {
         Args: {
           p_order_id: string;
-          p_new_status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded";
+          p_new_status: "draft" | "pending" | "pending_payment" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "partially_returned" | "partially_refunded" | "refunded";
           p_changed_by: string | null;
           p_reason?: string | null;
+        };
+        Returns: undefined;
+      };
+      release_inventory_for_order: {
+        Args: { p_order_id: string; p_actor_id?: string | null };
+        Returns: undefined;
+      };
+      commit_inventory_for_order: {
+        Args: { p_order_id: string; p_actor_id?: string | null };
+        Returns: undefined;
+      };
+      record_inventory_movement: {
+        Args: {
+          p_variant_id: string;
+          p_type: string;
+          p_quantity: number;
+          p_previous_qty: number;
+          p_new_qty: number;
+          p_source_type: string;
+          p_source_id: string | null;
+          p_note: string | null;
+          p_actor_id: string | null;
         };
         Returns: undefined;
       };

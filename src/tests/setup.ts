@@ -2,6 +2,16 @@ import "@testing-library/jest-dom";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
+// Provide dummy env values so modules that call validatePublicEnv() don't throw in tests
+vi.mock("@/lib/env", () => ({
+  env: {
+    NEXT_PUBLIC_APP_NAME: "TestShop",
+    NEXT_PUBLIC_APP_URL: "http://localhost:3000",
+    NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "test-anon-key",
+  },
+}));
+
 afterEach(() => {
   cleanup();
 });
