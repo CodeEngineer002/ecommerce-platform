@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 
+import { queryKeys } from "@/lib/query-keys";
 import type { OrderStatus } from "@/types";
 
 import {
@@ -11,23 +12,25 @@ import {
   adminUpdateOrderStatus,
 } from "../services/admin-order.service";
 
-export const adminOrderKeys = {
-  all: ["admin", "orders"] as const,
-  list: (page: number) => [...adminOrderKeys.all, "list", page] as const,
-  stats: () => [...adminOrderKeys.all, "stats"] as const,
-};
+export const adminOrderKeys = queryKeys.adminOrders;
 
 export function useAdminOrders(page = 1) {
   return useQuery({
-    queryKey: adminOrderKeys.list(page),
+    queryKey: queryKeys.adminOrders.list(page),
     queryFn: () => adminGetOrders(page),
+    // 30s: admin sees live orders, needs fresh data
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
 export function useAdminOrderStats() {
   return useQuery({
-    queryKey: adminOrderKeys.stats(),
+    queryKey: queryKeys.adminOrders.stats(),
     queryFn: adminGetOrderStats,
+    // 1 min: dashboard stats
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 

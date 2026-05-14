@@ -7,6 +7,7 @@ import { toast } from "react-hot-toast";
 
 import { QuantitySelector } from "@/components/ecommerce/quantity-selector";
 import { Button } from "@/components/ui/button";
+import { useAddCartItem } from "@/features/cart/hooks/use-cart-mutations";
 import { cn } from "@/lib/utils";
 import { useCartStore } from "@/store/cart-store";
 import { useWishlistStore } from "@/store/wishlist-store";
@@ -21,7 +22,8 @@ export function AddToCartSection({ product }: Props) {
   const [selectedVariantId, setSelectedVariantId] = useState(
     product.variants[0]?.id ?? null
   );
-  const { addItem, openCart } = useCartStore();
+  const { openCart } = useCartStore();
+  const { mutate: addCartItem, isPending: isAddingToCart } = useAddCartItem();
   const { toggleItem, hasItem } = useWishlistStore();
   const isWishlisted = hasItem(product.id);
 
@@ -33,19 +35,27 @@ export function AddToCartSection({ product }: Props) {
 
   const handleAddToCart = () => {
     if (!selectedVariant) return;
-    addItem({
-      id: `${selectedVariant.id}-${Date.now()}`,
-      cart_id: "",
-      variant_id: selectedVariant.id,
-      quantity,
-      added_at: new Date().toISOString(),
-      variant: {
-        ...selectedVariant,
-        product: { ...product },
+    addCartItem(
+      {
+        variantId: selectedVariant.id,
+        quantity,
+        optimisticItem: {
+          id: `${selectedVariant.id}-${Date.now()}`,
+          cart_id: "",
+          variant_id: selectedVariant.id,
+          quantity,
+          added_at: new Date().toISOString(),
+          variant: { ...selectedVariant, product: { ...product } },
+        },
       },
-    });
-    openCart();
-    toast.success("Added to cart!");
+      {
+        onSuccess: () => {
+          openCart();
+          toast.success("Added to cart!");
+        },
+        onError: (err) => toast.error(err.message),
+      },
+    );
   };
 
   return (
@@ -90,7 +100,7 @@ export function AddToCartSection({ product }: Props) {
           size="lg"
           className="flex-1 gap-2"
           onClick={handleAddToCart}
-          disabled={availableStock === 0 || !selectedVariant}
+          disabled={availableStock === 0 || !selectedVariant || isAddingToCart}
         >
           <ShoppingCart className="h-5 w-5" />
           {availableStock === 0 ? "Out of Stock" : "Add to Cart"}

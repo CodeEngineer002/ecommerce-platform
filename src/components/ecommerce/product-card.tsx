@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useAddCartItem } from "@/features/cart/hooks/use-cart-mutations";
 import { IMAGE_PLACEHOLDER, ROUTES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useCartStore } from "@/store/cart-store";
@@ -24,26 +25,27 @@ export function ProductCard({ product, className, showQuickAdd = true }: Product
   const primaryImage = product.images.find((i) => i.is_primary) ?? product.images[0];
   const defaultVariant = product.variants[0];
   const { toggleItem, hasItem } = useWishlistStore();
-  const { addItem, openCart } = useCartStore();
+  const { openCart } = useCartStore();
+  const { mutate: addCartItem } = useAddCartItem();
   const isWishlisted = hasItem(product.id);
 
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     if (!defaultVariant) return;
-    addItem({
-      id: `${defaultVariant.id}-${Date.now()}`,
-      cart_id: "",
-      variant_id: defaultVariant.id,
-      quantity: 1,
-      added_at: new Date().toISOString(),
-      variant: {
-        ...defaultVariant,
-        product: {
-          ...product,
-          images: product.images,
+    addCartItem(
+      {
+        variantId: defaultVariant.id,
+        quantity: 1,
+        optimisticItem: {
+          id: `${defaultVariant.id}-${Date.now()}`,
+          cart_id: "",
+          variant_id: defaultVariant.id,
+          quantity: 1,
+          added_at: new Date().toISOString(),
+          variant: { ...defaultVariant, product: { ...product, images: product.images } },
         },
       },
-    });
+    );
     openCart();
   };
 

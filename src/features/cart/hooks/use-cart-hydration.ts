@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { queryKeys } from "@/lib/query-keys";
 import { useCartStore } from "@/store/cart-store";
 import type { CartItemWithProduct } from "@/types";
 
@@ -14,7 +15,7 @@ export function useCartHydration() {
   const variantIds = persistedItems.map((i) => i.variant_id);
 
   const { data: variants } = useQuery({
-    queryKey: ["cart-variants", variantIds.slice().sort()],
+    queryKey: queryKeys.cart.variants(variantIds.slice().sort()),
     queryFn: async () => {
       const supabase = createClient();
       const { data } = await supabase

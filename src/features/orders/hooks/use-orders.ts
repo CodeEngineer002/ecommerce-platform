@@ -5,30 +5,35 @@ import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
 
 import { ROUTES } from "@/lib/constants";
+import { queryKeys } from "@/lib/query-keys";
 import { useCartStore } from "@/store/cart-store";
 import type { CheckoutPayload } from "@/types";
 
 import { createOrder, getOrderById, getOrders } from "../services/order.service";
 
-export const orderKeys = {
-  all: ["orders"] as const,
-  list: (userId: string) => [...orderKeys.all, "list", userId] as const,
-  detail: (id: string) => [...orderKeys.all, "detail", id] as const,
-};
+export const orderKeys = queryKeys.orders;
 
 export function useOrders(userId: string) {
   return useQuery({
-    queryKey: orderKeys.list(userId),
+    queryKey: queryKeys.orders.list(userId),
     queryFn: () => getOrders(userId),
     enabled: !!userId,
+    // 30s: users check their order status frequently; keep it fresh
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
 export function useOrder(orderId: string) {
   return useQuery({
-    queryKey: orderKeys.detail(orderId),
+    queryKey: queryKeys.orders.detail(orderId),
     queryFn: () => getOrderById(orderId),
     enabled: !!orderId,
+    // 1 min: order detail (status tracking)
+    staleTime: 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 

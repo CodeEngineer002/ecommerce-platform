@@ -1,8 +1,9 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ShoppingBag } from "lucide-react";
+import { Loader2, ShoppingBag } from "lucide-react";
 import Image from "next/image";
+import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 
 import { FormField } from "@/components/common/form-field";
@@ -13,25 +14,39 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
+import { useServerCart } from "@/features/cart/hooks/use-server-cart";
 import { useCreateOrder } from "@/features/orders/hooks/use-orders";
 import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST, TAX_RATE } from "@/lib/constants";
 import { formatPrice } from "@/lib/utils";
 import { checkoutSchema, type CheckoutFormData } from "@/lib/validators";
 import { useCartStore } from "@/store/cart-store";
+import { useUserStore } from "@/store/user-store";
 
 export default function CheckoutPage() {
-  const { items, subtotal } = useCartStore();
+  // Ensure the server cart is loaded (populates serverCart in Zustand)
+  const { isLoading: cartLoading } = useServerCart();
+  const { items, subtotal, serverCart } = useCartStore();
+  const { user } = useUserStore();
   const { mutate: createOrder, isPending } = useCreateOrder();
-  const sub = subtotal();
-  const tax = Math.round(sub * TAX_RATE * 100) / 100;
-  const shipping = sub >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
-  const total = sub + tax + shipping;
+
+  // Prefer server-authoritative pricing when available
+  const sub = serverCart ? serverCart.pricing.subtotal : subtotal();
+  const tax = serverCart
+    ? serverCart.pricing.estimated_tax
+    : Math.round(sub * TAX_RATE * 100) / 100;
+  const shipping = serverCart
+    ? serverCart.pricing.estimated_shipping
+    : sub >= FREE_SHIPPING_THRESHOLD
+      ? 0
+      : SHIPPING_COST;
+  const total = serverCart ? serverCart.pricing.total : sub + tax + shipping;
 
   const {
     register,
     handleSubmit,
     watch,
     control,
+    setValue,
     formState: { errors },
   } = useForm<CheckoutFormData>({
     resolver: zodResolver(checkoutSchema),
@@ -41,9 +56,25 @@ export default function CheckoutPage() {
     },
   });
 
+  // Pre-fill the shipping full name from the Zustand user store
+  useEffect(() => {
+    if (user?.full_name) {
+      setValue("shippingAddress.full_name", user.full_name, { shouldValidate: false });
+    }
+  }, [user?.full_name, setValue]);
+
   const useSameAddress = watch("useSameAddress");
 
-  if (items.length === 0) {
+  // Show spinner while server cart loads on first visit
+  if (cartLoading && !serverCart) {
+    return (
+      <div className="container flex min-h-[40vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (items.length === 0 && !serverCart?.item_count) {
     return (
       <div className="container py-16">
         <EmptyState

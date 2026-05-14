@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useRemoveCartItem, useUpdateCartQuantity } from "@/features/cart/hooks/use-cart-mutations";
 import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST } from "@/lib/constants";
 import { formatPrice } from "@/lib/utils";
 import { useCartStore } from "@/store/cart-store";
@@ -15,7 +16,9 @@ import { useCartStore } from "@/store/cart-store";
 import { QuantitySelector } from "./quantity-selector";
 
 export function CartDrawer() {
-  const { isOpen, closeCart, items, removeItem, updateQuantity, subtotal } = useCartStore();
+  const { isOpen, closeCart, items, subtotal } = useCartStore();
+  const { mutate: removeItem } = useRemoveCartItem();
+  const { mutate: updateQuantity } = useUpdateCartQuantity();
   const sub = subtotal();
   const shipping = sub >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
   const total = sub + shipping;
@@ -75,7 +78,7 @@ export function CartDrawer() {
                         <div className="flex items-center justify-between">
                           <QuantitySelector
                             value={item.quantity}
-                            onChange={(q) => updateQuantity(item.variant_id, q)}
+                            onChange={(q) => updateQuantity({ variantId: item.variant_id, quantity: q })}
                           />
                           <div className="text-right">
                             <p className="text-sm font-semibold">{formatPrice(price * item.quantity)}</p>
@@ -86,7 +89,7 @@ export function CartDrawer() {
                         </div>
                       </div>
                       <button
-                        onClick={() => removeItem(item.variant_id)}
+                        onClick={() => removeItem({ variantId: item.variant_id })}
                         className="self-start text-muted-foreground hover:text-destructive"
                         aria-label="Remove item"
                       >

@@ -145,11 +145,11 @@ export function getClientIp(headers: Headers): string {
  *   { limit: 5, windowMs: 60_000, routeKey: "orders:create" }
  * );
  */
-export function withRateLimit(
-  handler: (request: Request) => Promise<Response>,
+export function withRateLimit<T extends unknown[]>(
+  handler: (request: Request, ...rest: T) => Promise<Response>,
   config: RateLimitConfig & { routeKey: string },
-): (request: Request) => Promise<Response> {
-  return async (request: Request): Promise<Response> => {
+): (request: Request, ...rest: T) => Promise<Response> {
+  return async (request: Request, ...rest: T): Promise<Response> => {
     const ip = getClientIp(request.headers);
     const result = await checkRateLimit(`${config.routeKey}:${ip}`, config);
 
@@ -169,7 +169,7 @@ export function withRateLimit(
       );
     }
 
-    const response = await handler(request);
+    const response = await handler(request, ...rest);
 
     // Attach rate limit info headers to successful responses too
     response.headers.set("X-RateLimit-Limit", String(result.limit));

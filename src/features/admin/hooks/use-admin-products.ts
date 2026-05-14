@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 
+import { queryKeys } from "@/lib/query-keys";
 import type { ProductFormData } from "@/lib/validators";
 
 import {
@@ -16,24 +17,24 @@ import {
   uploadProductImage,
 } from "../services/admin-product.service";
 
-export const adminProductKeys = {
-  all: ["admin", "products"] as const,
-  list: (page: number) => [...adminProductKeys.all, "list", page] as const,
-  detail: (id: string) => [...adminProductKeys.all, "detail", id] as const,
-};
+export const adminProductKeys = queryKeys.adminProducts;
 
 export function useAdminProducts(page = 1) {
   return useQuery({
-    queryKey: adminProductKeys.list(page),
+    queryKey: queryKeys.adminProducts.list(page),
     queryFn: () => adminGetProducts(page),
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
 export function useAdminProduct(id: string) {
   return useQuery({
-    queryKey: adminProductKeys.detail(id),
+    queryKey: queryKeys.adminProducts.detail(id),
     queryFn: () => adminGetProduct(id),
     enabled: !!id,
+    staleTime: 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 }
 

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { devtools, persist } from "zustand/middleware";
 
 import type { Product } from "@/types";
 
@@ -13,18 +13,19 @@ interface WishlistState {
 }
 
 export const useWishlistStore = create<WishlistState>()(
+  devtools(
   persist(
     (set, get) => ({
       items: [],
 
       addItem: (product) => {
         if (!get().hasItem(product.id)) {
-          set((state) => ({ items: [...state.items, product] }));
+          set((state) => ({ items: [...state.items, product] }), false, "addItem");
         }
       },
 
       removeItem: (productId) => {
-        set((state) => ({ items: state.items.filter((p) => p.id !== productId) }));
+        set((state) => ({ items: state.items.filter((p) => p.id !== productId) }), false, "removeItem");
       },
 
       toggleItem: (product) => {
@@ -37,10 +38,12 @@ export const useWishlistStore = create<WishlistState>()(
 
       hasItem: (productId) => get().items.some((p) => p.id === productId),
 
-      clear: () => set({ items: [] }),
+      clear: () => set({ items: [] }, false, "clear"),
     }),
     {
       name: "wishlist-storage",
-    }
-  )
+    },
+  ),
+  { name: "ShopNest/wishlist" },
+  ),
 );

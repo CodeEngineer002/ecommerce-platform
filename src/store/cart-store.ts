@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { devtools, persist } from "zustand/middleware";
 
 import { CART_MAX_QUANTITY } from "@/lib/constants";
 import type { CartItemWithProduct } from "@/types";
@@ -50,6 +50,7 @@ interface CartState {
 }
 
 export const useCartStore = create<CartState>()(
+  devtools(
   persist(
     (set, get) => ({
       // ── Server cart ──────────────────────────────────────────────────────
@@ -62,18 +63,17 @@ export const useCartStore = create<CartState>()(
           serverCart: cart,
           serverCartId: cart?.id ?? null,
           serverCartWarnings: cart?.warnings ?? [],
-          // Sync persistedItems from server cart so itemCount stays accurate
           persistedItems: cart
             ? cart.items.map((i) => ({ variant_id: i.variant_id, quantity: i.quantity }))
             : get().persistedItems,
-        }),
+        }, false, "setServerCart"),
 
       // ── Legacy in-memory state ────────────────────────────────────────────
       items: [],
       persistedItems: [],
       isOpen: false,
 
-      setItems: (items) => set({ items }),
+      setItems: (items) => set({ items }, false, "setItems"),
 
       addItem: (item) => {
         set((state) => {
@@ -104,14 +104,14 @@ export const useCartStore = create<CartState>()(
               { variant_id: item.variant_id, quantity: item.quantity },
             ],
           };
-        });
+        }, false, "addItem");
       },
 
       removeItem: (variantId) => {
         set((state) => ({
           items: state.items.filter((i) => i.variant_id !== variantId),
           persistedItems: state.persistedItems.filter((i) => i.variant_id !== variantId),
-        }));
+        }), false, "removeItem");
       },
 
       updateQuantity: (variantId, quantity) => {
@@ -127,14 +127,14 @@ export const useCartStore = create<CartState>()(
           persistedItems: state.persistedItems.map((i) =>
             i.variant_id === variantId ? { ...i, quantity: clamped } : i,
           ),
-        }));
+        }), false, "updateQuantity");
       },
 
-      clearCart: () => set({ items: [], persistedItems: [], serverCart: null, serverCartId: null, serverCartWarnings: [] }),
+      clearCart: () => set({ items: [], persistedItems: [], serverCart: null, serverCartId: null, serverCartWarnings: [] }, false, "clearCart"),
 
-      openCart: () => set({ isOpen: true }),
-      closeCart: () => set({ isOpen: false }),
-      toggleCart: () => set((state) => ({ isOpen: !state.isOpen })),
+      openCart: () => set({ isOpen: true }, false, "openCart"),
+      closeCart: () => set({ isOpen: false }, false, "closeCart"),
+      toggleCart: () => set((state) => ({ isOpen: !state.isOpen }), false, "toggleCart"),
 
       itemCount: () => {
         // Prefer server cart count when available
@@ -161,5 +161,7 @@ export const useCartStore = create<CartState>()(
       // serverCart is not persisted (always fetched fresh on mount).
       partialize: (state) => ({ persistedItems: state.persistedItems }),
     },
+  ),
+  { name: "ShopNest/cart" },
   ),
 );

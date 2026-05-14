@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "react-hot-toast";
 
+import { queryKeys } from "@/lib/query-keys";
+import { useCartStore } from "@/store/cart-store";
+import { useUserStore } from "@/store/user-store";
 import type { LoginFormData, RegisterFormData } from "@/lib/validators";
 import type { Profile } from "@/types";
 
@@ -16,15 +19,16 @@ import {
   updateProfile,
 } from "../services/auth.service";
 
-export const authKeys = {
-  profile: ["auth", "profile"] as const,
-};
+// Re-exported for backward compat — profile-form.tsx imports this
+export const authKeys = queryKeys.auth;
 
 export function useProfile() {
   return useQuery({
-    queryKey: authKeys.profile,
+    queryKey: queryKeys.auth.profile,
     queryFn: getProfile,
+    // 5 min: profile rarely changes; UserHydrationProvider already seeds the store
     staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 }
 
@@ -35,8 +39,18 @@ export function useSignIn() {
 
   return useMutation({
     mutationFn: (data: LoginFormData) => signIn(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: authKeys.profile });
+    onSuccess: async () => {
+      // Merge guest cart → user cart (fire-and-forget; errors are non-fatal)
+      try {
+        await fetch("/api/cart/merge", { method: "POST" });
+      } catch {
+        // merge failure must not block login redirect
+      }
+
+      // Invalidate profile + cart so fresh data is fetched after redirect
+      queryClient.invalidateQueries({ queryKey: queryKeys.auth.profile });
+      queryClient.invalidateQueries({ queryKey: queryKeys.cart.session });
+
       const redirectTo = searchParams.get("redirect") ?? "/";
       router.push(redirectTo);
       toast.success("Welcome back!");
@@ -65,11 +79,16 @@ export function useSignUp() {
 export function useSignOut() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const clearCart = useCartStore((s) => s.clearCart);
 
   return useMutation({
     mutationFn: signOut,
     onSuccess: () => {
+      // Clear all cached server data
       queryClient.clear();
+      // Clear client-side stores
+      useUserStore.getState().clearUser();
+      clearCart();
       router.push("/");
       toast.success("Signed out successfully");
     },
@@ -99,8 +118,14 @@ export function useUpdateProfile() {
       userId: string;
       updates: Partial<Pick<Profile, "full_name" | "phone" | "avatar_url">>;
     }) => updateProfile(userId, updates),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: authKeys.profile });
+    onSuccess: (_, { updates }) => {
+      // Invalidate the React Query cache for full re-fetch
+      queryClient.invalidateQueries({ queryKey: queryKeys.auth.profile });
+      // Also patch user store immediately so UI updates without waiting for refetch
+      useUserStore.getState().patchUser({
+        full_name: updates.full_name ?? undefined,
+        avatar_url: updates.avatar_url ?? undefined,
+      });
       toast.success("Profile updated");
     },
     onError: (error: Error) => {
