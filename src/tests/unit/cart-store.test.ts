@@ -39,6 +39,8 @@ const mockItem: CartItemWithProduct = {
       seo_title: null,
       seo_desc: null,
       meta_image: null,
+      brand_id: null,
+      deleted_at: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       images: [],
@@ -48,7 +50,8 @@ const mockItem: CartItemWithProduct = {
 
 describe("CartStore", () => {
   beforeEach(() => {
-    useCartStore.setState({ items: [], isOpen: false });
+    // Reset ALL state including persistedItems — itemCount() reads persistedItems
+    useCartStore.setState({ items: [], persistedItems: [], isOpen: false });
   });
 
   it("adds an item to cart", () => {

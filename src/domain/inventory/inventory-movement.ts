@@ -44,6 +44,9 @@ export async function recordInventoryMovement(input: InventoryMovementInput): Pr
 /**
  * Adjusts inventory for a variant with a full audit trail.
  * Used for admin stock corrections.
+ *
+ * Safety: newQty is clamped to 0 minimum (stock can never go negative).
+ * For reductions, the delta is clamped so reserved stock is preserved.
  */
 export async function adjustInventory(
   variantId: string,
@@ -62,14 +65,18 @@ export async function adjustInventory(
   if (!inv) return;
 
   const previousQty = inv.quantity;
-  const newQty = Math.max(0, inv.quantity + delta);
+  // When reducing stock, ensure we never go below the reserved amount
+  // (reserved stock is committed to pending orders and cannot be removed)
+  const minQty = delta < 0 ? inv.reserved : 0;
+  const newQty = Math.max(minQty, inv.quantity + delta);
+  const effectiveDelta = newQty - previousQty;
 
   await db.from("inventory").update({ quantity: newQty }).eq("variant_id", variantId);
 
   await recordInventoryMovement({
     variantId,
     type: "adjustment",
-    quantity: delta,
+    quantity: effectiveDelta,
     previousQuantity: previousQty,
     newQuantity: newQty,
     sourceType: "admin",

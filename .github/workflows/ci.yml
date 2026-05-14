@@ -1,0 +1,211 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 1. TypeScript type-check
+  # ─────────────────────────────────────────────────────────────────────────────
+  typecheck:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run type-check
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 2. Lint
+  # ─────────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3. Unit + Integration tests
+  # ─────────────────────────────────────────────────────────────────────────────
+  test-unit:
+    name: Unit + Integration Tests
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_NAME: TestShop
+      NEXT_PUBLIC_PAYMENT_PROVIDER: stripe
+      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit + integration tests with coverage
+        run: npm run test:coverage -- --run
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 4. Build verification
+  # ─────────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [typecheck, lint, test-unit]
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_NAME: ShopNest
+      NEXT_PUBLIC_PAYMENT_PROVIDER: stripe
+      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js app
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextjs-build
+          path: .next/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 5. E2E tests (only on main / PRs targeting main)
+  # ─────────────────────────────────────────────────────────────────────────────
+  test-e2e:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+      NEXT_PUBLIC_APP_URL: http://localhost:4000
+      NEXT_PUBLIC_APP_NAME: ShopNest
+      NEXT_PUBLIC_PAYMENT_PROVIDER: stripe
+      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nextjs-build
+          path: .next/
+
+      - name: Run E2E tests
+        run: npm run test:e2e -- --project=chromium
+        env:
+          CI: "true"
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 6. Migration validation (verify SQL migrations are valid)
+  # ─────────────────────────────────────────────────────────────────────────────
+  validate-migrations:
+    name: Validate DB Migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check migration file naming convention
+        run: |
+          # Verify all migration files follow the {NNNNN}_description.sql pattern
+          for f in supabase/migrations/*.sql; do
+            filename=$(basename "$f")
+            if ! echo "$filename" | grep -qE '^[0-9]{5}_[a-z0-9_]+\.sql$'; then
+              echo "❌ Invalid migration filename: $filename (expected NNNNN_description.sql)"
+              exit 1
+            fi
+          done
+          echo "✅ All migration files follow naming convention"
+
+      - name: Check for duplicate migration numbers
+        run: |
+          nums=$(ls supabase/migrations/*.sql | xargs -I{} basename {} | grep -oE '^[0-9]+' | sort)
+          dupes=$(echo "$nums" | uniq -d)
+          if [ -n "$dupes" ]; then
+            echo "❌ Duplicate migration numbers detected: $dupes"
+            exit 1
+          fi
+          echo "✅ No duplicate migration numbers"

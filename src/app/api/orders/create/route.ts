@@ -7,6 +7,7 @@ import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
 import { CURRENCY } from "@/lib/constants";
 import { AuthError, InventoryError, NotFoundError } from "@/lib/errors";
 import { getPaymentProvider } from "@/lib/payment";
+import { withRateLimit } from "@/lib/rate-limit";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { addressSchema } from "@/lib/validators";
 
@@ -47,7 +48,8 @@ function getVariantPrice(variant: VariantRow): number {
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────
-export const POST = withApiHandler(async (request: Request) => {
+export const POST = withRateLimit(
+  withApiHandler(async (request: Request) => {
   const userClient = await createClient();
   const {
     data: { user },
@@ -205,4 +207,7 @@ export const POST = withApiHandler(async (request: Request) => {
     clientSecret: intent.clientSecret,
     providerOrderId: intent.providerOrderId,
   });
-});
+  }),
+  // 5 orders/min per IP — prevents order spam and payment intent abuse
+  { limit: 5, windowMs: 60_000, routeKey: "orders:create" },
+);

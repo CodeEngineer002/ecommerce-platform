@@ -4,6 +4,7 @@ import { validateCoupon } from "@/domain/coupon/coupon-engine";
 import { calculateDiscount } from "@/domain/pricing/pricing-engine";
 import { apiSuccess, withApiHandler } from "@/lib/api";
 import { AuthError } from "@/lib/errors";
+import { withRateLimit } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 
 const schema = z.object({
@@ -15,8 +16,11 @@ const schema = z.object({
  * Validates a coupon without consuming it.
  * Returns the discount amount so the checkout UI can preview the savings.
  * The actual coupon is consumed atomically inside create_order_atomic.
+ *
+ * Rate limited: 20 requests/min per IP to prevent coupon code enumeration.
  */
-export const POST = withApiHandler(async (request: Request) => {
+export const POST = withRateLimit(
+  withApiHandler(async (request: Request) => {
   const userClient = await createClient();
   const {
     data: { user },
@@ -33,4 +37,6 @@ export const POST = withApiHandler(async (request: Request) => {
     coupon: { code: coupon.code, type: coupon.type, value: coupon.value },
     discount,
   });
-});
+  }),
+  { limit: 20, windowMs: 60_000, routeKey: "coupon:validate" },
+);

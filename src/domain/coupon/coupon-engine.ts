@@ -1,15 +1,11 @@
 import "server-only";
 
 import type { CouponData } from "@/domain/pricing/types";
-import { AppError } from "@/lib/errors";
+import { CouponError } from "@/lib/errors";
 import { createServiceClient } from "@/lib/supabase/server";
 
-
-export class CouponError extends AppError {
-  constructor(message: string, code = "COUPON_INVALID") {
-    super(message, code, 422);
-  }
-}
+// Re-export so callers can import CouponError from this module without knowing errors.ts
+export { CouponError };
 
 /**
  * Validates a coupon code against live DB state and per-user usage history.

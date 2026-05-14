@@ -23,6 +23,10 @@ const serverEnvSchema = z.object({
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   SUPABASE_DB_URL: z.string().optional(),
+  // Upstash Redis — required for multi-instance / Vercel rate limiting
+  // Leave unset for local dev (falls back to in-memory limiter automatically)
+  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
 });
 
 function validateServerEnv() {
@@ -33,6 +37,8 @@ function validateServerEnv() {
     RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     SUPABASE_DB_URL: process.env.SUPABASE_DB_URL,
+    UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
   });
 
   if (!result.success) {

@@ -27,11 +27,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const headersList = await headers();
   const lang = headersList.get("x-language") ?? "en";
   const dir = (headersList.get("x-text-direction") ?? "ltr") as "ltr" | "rtl";
+  // Nonce forwarded from middleware via x-nonce request header.
+  // Next.js 15 automatically attaches this nonce to its own inline bootstrapping
+  // scripts when it's present in the incoming request context.
+  // Pass it to any <Script nonce={nonce}> tags added in this layout.
+  const nonce = headersList.get("x-nonce") ?? undefined;
 
   const fontVars = `${inter.variable} ${notoArabic.variable} ${notoDevanagari.variable}`;
 
   return (
     <html lang={lang} dir={dir} suppressHydrationWarning className={fontVars}>
+      {/* nonce stored on <head> so any inline scripts added here can reference it */}
+      <head>
+        {nonce && <meta name="csp-nonce" content={nonce} />}
+      </head>
       <body className="font-sans antialiased">
         <Providers>{children}</Providers>
       </body>

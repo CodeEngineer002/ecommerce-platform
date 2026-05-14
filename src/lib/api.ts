@@ -12,6 +12,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { AppError, getErrorMessage } from "./errors";
+import { logger } from "./logger";
 
 // ── Response shapes ────────────────────────────────────────────────────────────
 
@@ -72,7 +73,7 @@ export function withApiHandler<T extends unknown[]>(
       }
 
       // Unknown errors: log full context server-side, return generic message
-      console.error("[API Error]", error);
+      logger.error("[API Error] Unhandled exception in route handler", error);
       return apiError(
         process.env.NODE_ENV === "development"
           ? getErrorMessage(error)

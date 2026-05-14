@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
+import { buildCspWithNonce, generateNonce } from "@/lib/csp";
 import {
   COUNTRIES,
   COUNTRY_COOKIE,
@@ -14,6 +15,7 @@ import {
   type LanguageCode,
 } from "@/lib/i18n/config";
 import { resolveLocaleFromRequest } from "@/lib/i18n/locale-resolver";
+import { generateCorrelationId } from "@/lib/logger";
 import { updateSession } from "@/lib/supabase/middleware";
 
 // Paths that bypass locale handling entirely
@@ -28,11 +30,36 @@ function shouldSkipLocale(pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Always refresh Supabase session
+  // ── Correlation ID ────────────────────────────────────────────────────────
+  const correlationId =
+    request.headers.get("x-correlation-id") ?? generateCorrelationId();
+
+  // ── Per-request nonce (for CSP) ───────────────────────────────────────────
+  // Forward nonce to RSC via request headers so layout can read it via headers()
+  const nonce = generateNonce();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("x-correlation-id", correlationId);
+
+  // ── Session refresh (Supabase auth) ───────────────────────────────────────
+  // updateSession refreshes the auth token and sets updated cookies on its response.
+  // We create our own NextResponse.next() so that our custom request headers
+  // (x-nonce, x-correlation-id) are forwarded to Server Components via headers().
+  // Then we copy the auth cookies from sessionResponse to preserve the session.
   const sessionResponse = await updateSession(request);
 
+  function buildPageResponse(): NextResponse {
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    // Copy auth cookies from the Supabase session refresh
+    sessionResponse?.cookies.getAll().forEach((c) => res.cookies.set(c));
+    // Dynamic CSP with per-request nonce (replaces static next.config.ts CSP)
+    res.headers.set("Content-Security-Policy", buildCspWithNonce(nonce));
+    res.headers.set("x-correlation-id", correlationId);
+    return res;
+  }
+
   if (shouldSkipLocale(pathname)) {
-    return sessionResponse;
+    return buildPageResponse();
   }
 
   const segments = pathname.split("/").filter(Boolean);
@@ -53,7 +80,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // Valid — annotate response with locale context headers
-    const response = sessionResponse ?? NextResponse.next();
+    const response = buildPageResponse();
     const localeId = toLocaleId(country, lang);
     response.headers.set("x-country", country);
     response.headers.set("x-language", lang);
@@ -105,7 +132,7 @@ export async function middleware(request: NextRequest) {
     return redirect;
   }
 
-  return sessionResponse;
+  return buildPageResponse();
 }
 
 export const config = {
