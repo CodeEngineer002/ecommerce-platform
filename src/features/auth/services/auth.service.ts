@@ -1,3 +1,4 @@
+import { env } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
 import type { LoginFormData, RegisterFormData } from "@/lib/validators";
 import type { Profile } from "@/types";
@@ -32,7 +33,7 @@ export async function signOut() {
 export async function resetPassword(email: string) {
   const supabase = createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/reset-password`,
+    redirectTo: `${env.NEXT_PUBLIC_APP_URL}/auth/reset-password`,
   });
   if (error) throw error;
 }

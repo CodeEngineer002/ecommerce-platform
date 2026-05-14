@@ -48,7 +48,7 @@ export async function upsertHomepageSection(
   section: Partial<HomepageSection> & { id?: string }
 ): Promise<HomepageSection> {
   const supabase = createClient();
-  const { id, created_at, updated_at, ...fields } = section as HomepageSection & { id?: string };
+  const { id, created_at: _created_at, updated_at: _updated_at, ...fields } = section as HomepageSection & { id?: string };
   const payload = id ? { id, ...fields } : fields;
   const { data, error } = await supabase
     .from("homepage_sections")
@@ -62,7 +62,7 @@ export async function upsertHomepageSection(
 
 export async function upsertCmsPage(page: Partial<CmsPage> & { id?: string }): Promise<CmsPage> {
   const supabase = createClient();
-  const { id, created_at, updated_at, ...fields } = page as CmsPage & { id?: string };
+  const { id, created_at: _created_at, updated_at: _updated_at, ...fields } = page as CmsPage & { id?: string };
   const payload = id ? { id, ...fields } : fields;
   const { data, error } = await supabase
     .from("cms_pages")

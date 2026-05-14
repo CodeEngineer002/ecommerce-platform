@@ -3,15 +3,15 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState } from "react";
 
+import { Pagination } from "@/components/common/pagination";
+import { SearchBar } from "@/components/common/search-bar";
 import { FilterSidebar } from "@/components/ecommerce/filter-sidebar";
 import { ProductGrid } from "@/components/ecommerce/product-grid";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { Pagination } from "@/components/common/pagination";
-import { SearchBar } from "@/components/common/search-bar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SORT_OPTIONS } from "@/lib/constants";
 import { useCategories } from "@/features/products/hooks/use-categories";
 import { useProducts } from "@/features/products/hooks/use-products";
+import { SORT_OPTIONS } from "@/lib/constants";
 import type { ProductFilters } from "@/types";
 
 function ProductsPageContent() {

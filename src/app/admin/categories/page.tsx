@@ -1,25 +1,66 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Edit, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "react-hot-toast";
 
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { DataTable, type ColumnDef } from "@/components/common/data-table";
 import { FormField } from "@/components/common/form-field";
 import { PageHeader } from "@/components/common/page-header";
-import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { LoadingState } from "@/components/feedback/loading-state";
-import { categorySchema, type CategoryFormData } from "@/lib/validators";
-import { slugify } from "@/lib/utils";
-import { useCategories } from "@/features/products/hooks/use-categories";
+import { useCategories, categoryKeys } from "@/features/products/hooks/use-categories";
 import { createClient } from "@/lib/supabase/client";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { categoryKeys } from "@/features/products/hooks/use-categories";
+import { slugify } from "@/lib/utils";
+import { categorySchema, type CategoryFormData } from "@/lib/validators";
 import type { Category } from "@/types";
+
+const columns = (
+  onEdit: (cat: Category) => void,
+  onDelete: (id: string) => void,
+): ColumnDef<Category>[] => [
+  {
+    header: "Name",
+    cell: (c) => <span className="font-medium">{c.name}</span>,
+  },
+  {
+    header: "Slug",
+    cell: (c) => <span className="font-mono text-xs text-muted-foreground">{c.slug}</span>,
+  },
+  {
+    header: "Status",
+    align: "center",
+    cell: (c) => (
+      <Badge variant={c.is_active ? "success" : "secondary"}>
+        {c.is_active ? "Active" : "Draft"}
+      </Badge>
+    ),
+  },
+  {
+    header: "Actions",
+    align: "right",
+    cell: (c) => (
+      <>
+        <Button variant="ghost" size="icon" onClick={() => onEdit(c)}>
+          <Edit className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-destructive"
+          onClick={() => onDelete(c.id)}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </>
+    ),
+  },
+];
 
 export default function AdminCategoriesPage() {
   const { data: categories = [], isLoading } = useCategories();
@@ -73,11 +114,15 @@ export default function AdminCategoriesPage() {
 
   const openEdit = (cat: Category) => {
     setEditItem(cat);
-    reset({ name: cat.name, slug: cat.slug, description: cat.description ?? "", is_active: cat.is_active, sort_order: cat.sort_order });
+    reset({
+      name: cat.name,
+      slug: cat.slug,
+      description: cat.description ?? "",
+      is_active: cat.is_active,
+      sort_order: cat.sort_order,
+    });
     setIsDialogOpen(true);
   };
-
-  if (isLoading) return <LoadingState text="Loading categories…" />;
 
   return (
     <div className="space-y-6">
@@ -90,46 +135,16 @@ export default function AdminCategoriesPage() {
         }
       />
 
-      <div className="rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/50">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium">Name</th>
-              <th className="px-4 py-3 text-left font-medium">Slug</th>
-              <th className="px-4 py-3 text-center font-medium">Status</th>
-              <th className="px-4 py-3 text-right font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {categories.map((cat) => (
-              <tr key={cat.id} className="hover:bg-muted/30">
-                <td className="px-4 py-3 font-medium">{cat.name}</td>
-                <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{cat.slug}</td>
-                <td className="px-4 py-3 text-center">
-                  <Badge variant={cat.is_active ? "success" : "secondary"}>
-                    {cat.is_active ? "Active" : "Draft"}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(cat)}>
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive"
-                    onClick={() => setDeleteId(cat.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns(openEdit, setDeleteId)}
+        data={categories}
+        keyFn={(c) => c.id}
+        isLoading={isLoading}
+        loadingText="Loading categories…"
+        emptyTitle="No categories yet"
+        emptyDescription="Create your first category to organize products."
+      />
 
-      {/* Edit/Create dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>

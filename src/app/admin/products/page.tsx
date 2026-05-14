@@ -6,17 +6,88 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { DataTable, type ColumnDef } from "@/components/common/data-table";
 import { PageHeader } from "@/components/common/page-header";
-import { Pagination } from "@/components/common/pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { LoadingState } from "@/components/feedback/loading-state";
-import { ROUTES } from "@/lib/constants";
-import { formatPrice } from "@/lib/utils";
 import {
   useAdminDeleteProduct,
   useAdminProducts,
 } from "@/features/admin/hooks/use-admin-products";
+import { ROUTES } from "@/lib/constants";
+import { formatPrice } from "@/lib/utils";
+import type { Product } from "@/types";
+
+// Matches the partial select in adminGetProducts — not the full ProductImage row
+type AdminProductImage = { id: string; url: string; is_primary: boolean; sort_order: number };
+
+type ProductRow = Product & {
+  category?: { id: string; name: string } | null;
+  images?: AdminProductImage[];
+};
+
+const columns = (
+  onDelete: (id: string) => void,
+): ColumnDef<ProductRow>[] => [
+  {
+    header: "Product",
+    cell: (p) => {
+      const primaryImage = p.images?.find((i) => i.is_primary)?.url ?? p.images?.[0]?.url;
+      return (
+        <div className="flex items-center gap-3">
+          <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
+            {primaryImage && (
+              <Image src={primaryImage} alt={p.name} fill className="object-cover" sizes="40px" />
+            )}
+          </div>
+          <div>
+            <p className="font-medium">{p.name}</p>
+            <p className="text-xs text-muted-foreground">{p.sku}</p>
+          </div>
+        </div>
+      );
+    },
+  },
+  {
+    header: "Category",
+    cell: (p) => <span className="text-muted-foreground">{p.category?.name ?? "—"}</span>,
+  },
+  {
+    header: "Price",
+    align: "right",
+    cell: (p) => formatPrice(p.base_price),
+  },
+  {
+    header: "Status",
+    align: "center",
+    cell: (p) => (
+      <Badge variant={p.is_active ? "success" : "secondary"}>
+        {p.is_active ? "Active" : "Draft"}
+      </Badge>
+    ),
+  },
+  {
+    header: "Actions",
+    align: "right",
+    cell: (p) => (
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" size="icon" asChild>
+          <Link href={ROUTES.admin.editProduct(p.id)}>
+            <Edit className="h-4 w-4" />
+          </Link>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-destructive hover:text-destructive"
+          onClick={() => onDelete(p.id)}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    ),
+  },
+];
 
 export default function AdminProductsPage() {
   const [page, setPage] = useState(1);
@@ -24,10 +95,7 @@ export default function AdminProductsPage() {
   const { mutate: deleteProduct, isPending: isDeleting } = useAdminDeleteProduct();
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const products = data?.data ?? [];
-  const totalPages = data?.totalPages ?? 1;
-
-  if (isLoading) return <LoadingState text="Loading products…" />;
+  const products = (data?.data ?? []) as ProductRow[];
 
   return (
     <div className="space-y-6">
@@ -43,83 +111,18 @@ export default function AdminProductsPage() {
         }
       />
 
-      <div className="rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/50">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium">Product</th>
-              <th className="px-4 py-3 text-left font-medium">Category</th>
-              <th className="px-4 py-3 text-right font-medium">Price</th>
-              <th className="px-4 py-3 text-center font-medium">Status</th>
-              <th className="px-4 py-3 text-right font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {products.map((product) => {
-              const p = product as typeof product & {
-                category?: { name: string } | null;
-                images?: { url: string; is_primary?: boolean }[];
-              };
-              const primaryImage =
-                p.images?.find((i) => i.is_primary)?.url ?? p.images?.[0]?.url;
-
-              return (
-                <tr key={product.id} className="hover:bg-muted/30">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
-                        {primaryImage && (
-                          <Image
-                            src={primaryImage}
-                            alt={product.name}
-                            fill
-                            className="object-cover"
-                            sizes="40px"
-                          />
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-medium">{product.name}</p>
-                        <p className="text-xs text-muted-foreground">{product.sku}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{p.category?.name ?? "—"}</td>
-                  <td className="px-4 py-3 text-right">{formatPrice(product.base_price)}</td>
-                  <td className="px-4 py-3 text-center">
-                    <Badge variant={product.is_active ? "success" : "secondary"}>
-                      {product.is_active ? "Active" : "Draft"}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="icon" asChild>
-                        <Link href={ROUTES.admin.editProduct(product.id)}>
-                          <Edit className="h-4 w-4" />
-                        </Link>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDeleteId(product.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex justify-center">
-          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
-        </div>
-      )}
+      <DataTable
+        columns={columns(setDeleteId)}
+        data={products}
+        keyFn={(p) => p.id}
+        isLoading={isLoading}
+        loadingText="Loading products…"
+        emptyTitle="No products yet"
+        emptyDescription="Create your first product to get started."
+        page={page}
+        totalPages={data?.totalPages ?? 1}
+        onPageChange={setPage}
+      />
 
       <ConfirmDialog
         open={!!deleteId}

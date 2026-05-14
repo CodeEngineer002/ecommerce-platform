@@ -1,8 +1,8 @@
 import type { MetadataRoute } from "next";
 
-import { APP_URL } from "@/lib/constants";
 import { getCategories } from "@/features/products/services/category.service";
 import { getProducts } from "@/features/products/services/product.service";
+import { APP_URL } from "@/lib/constants";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [{ data: products }, categories] = await Promise.all([

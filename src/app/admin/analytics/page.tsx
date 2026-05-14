@@ -2,8 +2,8 @@ import { DollarSign, Package, ShoppingBag, TrendingUp, Users } from "lucide-reac
 
 import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatPrice } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/server";
+import { formatPrice } from "@/lib/utils";
 
 export default async function AdminAnalyticsPage() {
   const supabase = await createClient();

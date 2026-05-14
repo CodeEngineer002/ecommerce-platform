@@ -1,10 +1,9 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Controller, useForm } from "react-hook-form";
-import Image from "next/image";
-import Link from "next/link";
 import { ShoppingBag } from "lucide-react";
+import Image from "next/image";
+import { Controller, useForm } from "react-hook-form";
 
 import { FormField } from "@/components/common/form-field";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -14,11 +13,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
-import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST, TAX_RATE } from "@/lib/constants";
-import { checkoutSchema, type CheckoutFormData } from "@/lib/validators";
-import { formatPrice } from "@/lib/utils";
-import { useCartStore } from "@/store/cart-store";
 import { useCreateOrder } from "@/features/orders/hooks/use-orders";
+import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST, TAX_RATE } from "@/lib/constants";
+import { formatPrice } from "@/lib/utils";
+import { checkoutSchema, type CheckoutFormData } from "@/lib/validators";
+import { useCartStore } from "@/store/cart-store";
 
 export default function CheckoutPage() {
   const { items, subtotal } = useCartStore();

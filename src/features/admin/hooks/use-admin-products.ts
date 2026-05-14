@@ -94,7 +94,7 @@ export function useDeleteProductImage() {
     mutationFn: ({
       imageId,
       url,
-      productId,
+      productId: _productId,
     }: {
       imageId: string;
       url: string;

@@ -12,7 +12,6 @@ import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST } from "@/lib/constants"
 import { formatPrice } from "@/lib/utils";
 import { useCartStore } from "@/store/cart-store";
 
-import { PriceDisplay } from "./price-display";
 import { QuantitySelector } from "./quantity-selector";
 
 export function CartDrawer() {

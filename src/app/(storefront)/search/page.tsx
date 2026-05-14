@@ -1,13 +1,13 @@
 "use client";
 
+import { SearchX } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
+import { SearchBar } from "@/components/common/search-bar";
 import { ProductGrid } from "@/components/ecommerce/product-grid";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { SearchBar } from "@/components/common/search-bar";
 import { useProductSearch } from "@/features/products/hooks/use-products";
-import { SearchX } from "lucide-react";
 
 function SearchResults() {
   const searchParams = useSearchParams();

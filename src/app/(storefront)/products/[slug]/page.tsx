@@ -1,16 +1,18 @@
-import { Heart, ShoppingCart, Star, Truck } from "lucide-react";
+import { Star, Truck } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
-import { ProductGallery } from "@/components/ecommerce/product-gallery";
 import { PriceDisplay } from "@/components/ecommerce/price-display";
+import { ProductGallery } from "@/components/ecommerce/product-gallery";
 import { ProductGrid } from "@/components/ecommerce/product-grid";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { APP_NAME } from "@/lib/constants";
 import { getProductBySlug, getRelatedProducts } from "@/features/products/services/product.service";
+import { APP_NAME } from "@/lib/constants";
+
 import { AddToCartSection } from "./add-to-cart-section";
 
 interface Props {
@@ -34,12 +36,41 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
+async function RelatedProducts({ productId, categoryId }: { productId: string; categoryId: string | null }) {
+  const related = await getRelatedProducts(productId, categoryId, 4);
+  if (!related.length) return null;
+  return (
+    <section className="mt-16 space-y-4">
+      <h2 className="text-xl font-bold">You May Also Like</h2>
+      <ProductGrid products={related} />
+    </section>
+  );
+}
+
+function RelatedProductsSkeleton() {
+  return (
+    <div className="mt-16 space-y-4">
+      <Skeleton className="h-7 w-40" />
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-lg border bg-card">
+            <Skeleton className="aspect-square rounded-t-lg rounded-b-none" />
+            <div className="space-y-2 p-3">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-5 w-1/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default async function ProductDetailPage({ params }: Props) {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
   if (!product) notFound();
-
-  const related = await getRelatedProducts(product.id, product.category_id, 4);
 
   const inStock = product.variants.some(
     (v) => v.is_active && (v.inventory?.quantity ?? 0) > 0
@@ -160,13 +191,10 @@ export default async function ProductDetailPage({ params }: Props) {
         </Tabs>
       </div>
 
-      {/* Related */}
-      {related.length > 0 && (
-        <section className="mt-16 space-y-4">
-          <h2 className="text-xl font-bold">You May Also Like</h2>
-          <ProductGrid products={related} />
-        </section>
-      )}
+      {/* Related products — deferred so main content streams first */}
+      <Suspense fallback={<RelatedProductsSkeleton />}>
+        <RelatedProducts productId={product.id} categoryId={product.category_id} />
+      </Suspense>
     </div>
   );
 }

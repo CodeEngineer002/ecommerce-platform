@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
+import { useState } from "react";
 
 import { FormField } from "@/components/common/form-field";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { APP_NAME, ROUTES } from "@/lib/constants";
 import { useResetPassword } from "@/features/auth/hooks/use-auth";
+import { APP_NAME, ROUTES } from "@/lib/constants";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");

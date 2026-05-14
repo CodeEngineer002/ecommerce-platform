@@ -7,9 +7,9 @@ import { useForm } from "react-hook-form";
 import { FormField } from "@/components/common/form-field";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { useSignUp } from "@/features/auth/hooks/use-auth";
 import { APP_NAME, ROUTES } from "@/lib/constants";
 import { registerSchema, type RegisterFormData } from "@/lib/validators";
-import { useSignUp } from "@/features/auth/hooks/use-auth";
 
 export default function RegisterPage() {
   const { mutate: signUp, isPending } = useSignUp();

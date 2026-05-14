@@ -2,8 +2,8 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Upload, X } from "lucide-react";
-import Link from "next/link";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use } from "react";
 import { useForm } from "react-hook-form";
@@ -16,8 +16,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ROUTES } from "@/lib/constants";
-import { productSchema, type ProductFormData } from "@/lib/validators";
 import {
   useAdminProduct,
   useAdminUpdateProduct,
@@ -25,6 +23,8 @@ import {
   useUploadProductImage,
 } from "@/features/admin/hooks/use-admin-products";
 import { useCategories } from "@/features/products/hooks/use-categories";
+import { ROUTES } from "@/lib/constants";
+import { productSchema, type ProductFormData } from "@/lib/validators";
 import type { ProductImage } from "@/types";
 
 interface Props {

@@ -2,11 +2,11 @@ import { DollarSign, Package, ShoppingBag, Users } from "lucide-react";
 import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatPrice } from "@/lib/utils";
 import { createServiceClient } from "@/lib/supabase/server";
+import { formatPrice } from "@/lib/utils";
 
 export default async function AdminDashboardPage() {
-  const supabase = await createServiceClient();
+  const supabase = createServiceClient();
 
   const [
     { count: totalOrders },

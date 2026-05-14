@@ -9,13 +9,13 @@ import { useForm } from "react-hook-form";
 import { FormField } from "@/components/common/form-field";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { useSignIn } from "@/features/auth/hooks/use-auth";
 import { APP_NAME, ROUTES } from "@/lib/constants";
 import { loginSchema, type LoginFormData } from "@/lib/validators";
-import { useSignIn } from "@/features/auth/hooks/use-auth";
 
 function LoginForm() {
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirect") ?? ROUTES.home;
+  const _redirectTo = searchParams.get("redirect") ?? ROUTES.home;
   const verified = searchParams.get("verified");
   const { mutate: signIn, isPending } = useSignIn();
 

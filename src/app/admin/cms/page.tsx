@@ -4,18 +4,18 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Edit, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { z } from "zod";
 
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { FormField } from "@/components/common/form-field";
 import { PageHeader } from "@/components/common/page-header";
-import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { LoadingState } from "@/components/feedback/loading-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { LoadingState } from "@/components/feedback/loading-state";
-import { slugify } from "@/lib/utils";
-import { z } from "zod";
 import { useCmsPages, useDeleteCmsPage, useUpsertCmsPage } from "@/features/cms/hooks/use-cms";
+import { slugify } from "@/lib/utils";
 import type { CmsPage } from "@/types";
 
 const pageFormSchema = z.object({

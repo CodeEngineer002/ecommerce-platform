@@ -1,13 +1,14 @@
 "use client";
 
 import { notFound, useParams } from "next/navigation";
+import { useState } from "react";
 
+import { Pagination } from "@/components/common/pagination";
 import { ProductGrid } from "@/components/ecommerce/product-grid";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { Pagination } from "@/components/common/pagination";
 import { useCategory } from "@/features/products/hooks/use-categories";
 import { useProducts } from "@/features/products/hooks/use-products";
-import { useState } from "react";
+
 
 export default function CategoryPage() {
   const { slug } = useParams<{ slug: string }>();

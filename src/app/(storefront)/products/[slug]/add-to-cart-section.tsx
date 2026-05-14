@@ -1,16 +1,16 @@
 "use client";
 
 import { ShoppingCart } from "lucide-react";
+import { Heart } from "lucide-react";
 import { useState } from "react";
 import { toast } from "react-hot-toast";
 
 import { QuantitySelector } from "@/components/ecommerce/quantity-selector";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useCartStore } from "@/store/cart-store";
 import { useWishlistStore } from "@/store/wishlist-store";
 import type { ProductWithDetails } from "@/types";
-import { Heart } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface Props {
   product: ProductWithDetails;

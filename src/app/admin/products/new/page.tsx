@@ -13,11 +13,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ROUTES } from "@/lib/constants";
-import { productSchema, type ProductFormData } from "@/lib/validators";
-import { slugify } from "@/lib/utils";
 import { useAdminCreateProduct } from "@/features/admin/hooks/use-admin-products";
 import { useCategories } from "@/features/products/hooks/use-categories";
+import { ROUTES } from "@/lib/constants";
+import { slugify } from "@/lib/utils";
+import { productSchema, type ProductFormData } from "@/lib/validators";
 
 export default function NewProductPage() {
   const router = useRouter();
@@ -28,14 +28,11 @@ export default function NewProductPage() {
     register,
     handleSubmit,
     setValue,
-    watch,
     formState: { errors },
   } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
     defaultValues: { is_active: true, is_featured: false, tags: [] },
   });
-
-  const nameValue = watch("name");
 
   return (
     <div className="space-y-6">

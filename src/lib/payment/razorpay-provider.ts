@@ -1,4 +1,8 @@
+import "server-only";
 import crypto from "crypto";
+
+import { env } from "@/lib/env";
+import { serverEnv } from "@/lib/env.server";
 
 import type {
   CreatePaymentIntentParams,
@@ -13,8 +17,11 @@ export class RazorpayProvider implements IPaymentProvider {
   private keySecret: string;
 
   constructor() {
-    this.keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!;
-    this.keySecret = process.env.RAZORPAY_KEY_SECRET!;
+    if (!env.NEXT_PUBLIC_RAZORPAY_KEY_ID)
+      throw new Error("NEXT_PUBLIC_RAZORPAY_KEY_ID is not configured");
+    if (!serverEnv.RAZORPAY_KEY_SECRET) throw new Error("RAZORPAY_KEY_SECRET is not configured");
+    this.keyId = env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+    this.keySecret = serverEnv.RAZORPAY_KEY_SECRET;
   }
 
   private async request<T>(path: string, method: string, body?: unknown): Promise<T> {

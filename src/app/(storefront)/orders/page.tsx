@@ -6,10 +6,10 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ROUTES } from "@/lib/constants";
-import { formatDate, formatPrice } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/server";
 import { getOrders } from "@/features/orders/services/order.service";
+import { ROUTES } from "@/lib/constants";
+import { createClient } from "@/lib/supabase/server";
+import { formatDate, formatPrice } from "@/lib/utils";
 
 export default async function OrdersPage() {
   const supabase = await createClient();

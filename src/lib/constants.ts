@@ -1,5 +1,7 @@
-export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "ShopNest";
-export const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+import { env } from "@/lib/env";
+
+export const APP_NAME = env.NEXT_PUBLIC_APP_NAME;
+export const APP_URL = env.NEXT_PUBLIC_APP_URL;
 
 export const CURRENCY = "INR";
 export const CURRENCY_LOCALE = "en-IN";

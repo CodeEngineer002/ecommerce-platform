@@ -1,6 +1,6 @@
+import { FREE_SHIPPING_THRESHOLD, SHIPPING_COST, TAX_RATE } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import type { CheckoutPayload, OrderWithItems, PriceBreakdown } from "@/types";
-import { FREE_SHIPPING_THRESHOLD, SHIPPING_COST, TAX_RATE } from "@/lib/constants";
 
 export async function getOrders(userId: string): Promise<OrderWithItems[]> {
   const supabase = createClient();

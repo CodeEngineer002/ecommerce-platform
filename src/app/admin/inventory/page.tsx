@@ -3,9 +3,9 @@
 import { useState } from "react";
 
 import { PageHeader } from "@/components/common/page-header";
+import { LoadingState } from "@/components/feedback/loading-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LoadingState } from "@/components/feedback/loading-state";
 import { useAdminProducts, useAdminUpdateInventory } from "@/features/admin/hooks/use-admin-products";
 
 export default function AdminInventoryPage() {

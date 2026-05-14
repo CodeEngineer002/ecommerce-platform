@@ -1,6 +1,7 @@
 import { CartDrawer } from "@/components/ecommerce/cart-drawer";
 import { Footer } from "@/components/layout/footer";
 import { Navbar } from "@/components/layout/navbar";
+import { CartHydrationProvider } from "@/features/cart/cart-hydration-provider";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function StorefrontLayout({ children }: { children: React.ReactNode }) {
@@ -23,11 +24,13 @@ export default async function StorefrontLayout({ children }: { children: React.R
     : null;
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Navbar user={navUser} />
-      <main className="flex-1">{children}</main>
-      <Footer />
-      <CartDrawer />
-    </div>
+    <CartHydrationProvider>
+      <div className="flex min-h-screen flex-col">
+        <Navbar user={navUser} />
+        <main className="flex-1">{children}</main>
+        <Footer />
+        <CartDrawer />
+      </div>
+    </CartHydrationProvider>
   );
 }
