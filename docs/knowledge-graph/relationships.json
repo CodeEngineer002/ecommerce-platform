@@ -1,0 +1,289 @@
+{
+  "_meta": {
+    "description": "Entity relationships for the ecommerce platform knowledge graph.",
+    "generated": "2026-05-16",
+    "version": "1.0.0",
+    "notation": "source → target: cardinality (type)",
+    "types": ["FK", "EVENT", "INHERITS", "SNAPSHOT", "CONSUMES", "PRODUCES", "VALIDATES"]
+  },
+  "relationships": [
+    {
+      "from": "profiles",
+      "to": "orders",
+      "cardinality": "1:N",
+      "type": "FK",
+      "via": "orders.user_id → profiles.id",
+      "note": "User can have many orders; orders are never deleted"
+    },
+    {
+      "from": "profiles",
+      "to": "carts",
+      "cardinality": "1:N",
+      "type": "FK",
+      "via": "carts.user_id → profiles.id (nullable — guest carts use session_id)",
+      "note": "Authenticated users may have one active cart; guest carts have null user_id"
+    },
+    {
+      "from": "carts",
+      "to": "orders",
+      "cardinality": "1:1",
+      "type": "EVENT",
+      "via": "carts.converted_to_order_id → orders.id",
+      "note": "Cart transitions to 'converted' status; converted_to_order_id points to created order"
+    },
+    {
+      "from": "cart_items",
+      "to": "product_variants",
+      "cardinality": "N:1",
+      "type": "FK",
+      "via": "cart_items.variant_id → product_variants.id",
+      "note": "unit_price_snapshot captures price at add time; divergence triggers PRICE_CHANGED warning"
+    },
+    {
+      "from": "order_items",
+      "to": "product_variants",
+      "cardinality": "N:1",
+      "type": "SNAPSHOT",
+      "via": "order_items.variant_id → product_variants.id (plus order_items.snapshot JSON)",
+      "note": "FK is for traceability only; snapshot JSON is the authoritative record"
+    },
+    {
+      "from": "orders",
+      "to": "order_address_snapshots",
+      "cardinality": "1:N",
+      "type": "SNAPSHOT",
+      "via": "order_address_snapshots.order_id → orders.id",
+      "note": "Immutable copy of shipping + billing addresses at order time; max 2 per order"
+    },
+    {
+      "from": "customer_addresses",
+      "to": "order_address_snapshots",
+      "cardinality": "1:N",
+      "type": "SNAPSHOT",
+      "via": "order_address_snapshots.source_address_id → customer_addresses.id",
+      "note": "Traceability link only; snapshot is independent — changes to customer_addresses do not affect"
+    },
+    {
+      "from": "orders",
+      "to": "payments",
+      "cardinality": "1:N",
+      "type": "FK",
+      "via": "payments.order_id → orders.id",
+      "note": "Typically 1 payment per order; N:N possible in retry/partial scenarios"
+    },
+    {
+      "from": "payments",
+      "to": "payment_events",
+      "cardinality": "1:N",
+      "type": "EVENT",
+      "via": "payment_events.payment_id → payments.id",
+      "note": "Audit log of all payment state transitions and webhook receipts"
+    },
+    {
+      "from": "inventory_levels",
+      "to": "product_variants",
+      "cardinality": "N:1",
+      "type": "FK",
+      "via": "inventory_levels.variant_id → product_variants.id",
+      "note": "available = quantity - reserved; reserved incremented on order, decremented on cancellation"
+    },
+    {
+      "from": "inventory_levels",
+      "to": "warehouses",
+      "cardinality": "N:1",
+      "type": "FK",
+      "via": "inventory_levels.warehouse_id → warehouses.id"
+    },
+    {
+      "from": "inventory_movements",
+      "to": "product_variants",
+      "cardinality": "N:1",
+      "type": "FK",
+      "via": "inventory_movements.variant_id → product_variants.id",
+      "note": "Append-only audit ledger; never updated, never deleted"
+    },
+    {
+      "from": "coupons",
+      "to": "coupon_usage",
+      "cardinality": "1:N",
+      "type": "CONSUMES",
+      "via": "coupon_usage.coupon_id → coupons.id",
+      "note": "UNIQUE(coupon_id, user_id) — one use per user enforced at DB level"
+    },
+    {
+      "from": "profiles",
+      "to": "coupon_usage",
+      "cardinality": "1:N",
+      "type": "FK",
+      "via": "coupon_usage.user_id → profiles.id"
+    },
+    {
+      "from": "profiles",
+      "to": "customer_addresses",
+      "cardinality": "1:N",
+      "type": "FK",
+      "via": "customer_addresses.user_id → profiles.id",
+      "note": "Addresses are soft-deleted (archived_at), never hard-deleted"
+    },
+    {
+      "from": "customer_addresses",
+      "to": "address_country_rules",
+      "cardinality": "N:1",
+      "type": "VALIDATES",
+      "via": "customer_addresses.country_id → address_country_rules.country_id",
+      "note": "Rules define postal code format, required fields, etc. for each country"
+    },
+    {
+      "from": "administrative_regions",
+      "to": "cities",
+      "cardinality": "1:N",
+      "type": "FK",
+      "via": "cities.administrative_region_code → administrative_regions.code",
+      "note": "Enables state → city drill-down in address forms"
+    },
+    {
+      "from": "cms_pages",
+      "to": "localized_cms_pages",
+      "cardinality": "1:N",
+      "type": "INHERITS",
+      "via": "localized_cms_pages.page_id → cms_pages.id",
+      "note": "One localized variant per (page, country, language). NULL content = inherit from country default lang."
+    },
+    {
+      "from": "cms_page_versions",
+      "to": "cms_pages",
+      "cardinality": "N:1",
+      "type": "FK",
+      "via": "cms_page_versions.page_id → cms_pages.id",
+      "note": "Version history; published_version field on localized_cms_pages points to active version"
+    },
+    {
+      "from": "products",
+      "to": "product_variants",
+      "cardinality": "1:N",
+      "type": "FK",
+      "via": "product_variants.product_id → products.id",
+      "note": "A product must have at least one variant; variant.price overrides base_price when set"
+    },
+    {
+      "from": "products",
+      "to": "product_images",
+      "cardinality": "1:N",
+      "type": "FK",
+      "via": "product_images.product_id → products.id"
+    },
+    {
+      "from": "products",
+      "to": "reviews",
+      "cardinality": "1:N",
+      "type": "FK",
+      "via": "reviews.product_id → products.id",
+      "note": "UNIQUE(product_id, user_id) — one review per product per user; requires verified_purchase"
+    },
+    {
+      "from": "profiles",
+      "to": "roles",
+      "cardinality": "N:M",
+      "type": "FK",
+      "via": "user_roles join table (user_id, role_id)",
+      "note": "Also: profiles.role column for quick role check (customer | admin | super_admin)"
+    },
+    {
+      "from": "roles",
+      "to": "permissions",
+      "cardinality": "N:M",
+      "type": "FK",
+      "via": "role_permissions join table (role_id, permission_id)"
+    },
+    {
+      "from": "orders",
+      "to": "order_status_history",
+      "cardinality": "1:N",
+      "type": "EVENT",
+      "via": "order_status_history.order_id → orders.id",
+      "note": "Append-only audit; used to determine delivered_at for return window calculation"
+    },
+    {
+      "from": "media_folders",
+      "to": "media_folders",
+      "cardinality": "N:1",
+      "type": "FK",
+      "via": "media_folders.parent_id → media_folders.id (self-referential)",
+      "note": "Supports nested folder hierarchy in media library"
+    },
+    {
+      "from": "media_assets",
+      "to": "media_folders",
+      "cardinality": "N:1",
+      "type": "FK",
+      "via": "media_assets.folder_id → media_folders.id"
+    },
+    {
+      "from": "cms_pages",
+      "to": "cms_pages",
+      "cardinality": "N:1",
+      "type": "FK",
+      "via": "cms_pages.parent_id → cms_pages.id (self-referential)",
+      "note": "CMS page hierarchy (e.g., /about/team under /about)"
+    }
+  ],
+  "cross_domain_flows": [
+    {
+      "name": "cart_to_order",
+      "steps": [
+        "carts (active) → cart_items (N items)",
+        "buildCheckoutSummary() validates prices + stock",
+        "create_order_atomic() RPC fires",
+        "carts.status → converted, carts.converted_to_order_id set",
+        "orders row created with pricing_snapshot",
+        "order_items rows created with unit_price + snapshot",
+        "order_address_snapshots rows created",
+        "inventory_levels.reserved += qty per variant",
+        "coupon_usage row inserted, coupons.used_count++",
+        "order_status_history: order_created event"
+      ]
+    },
+    {
+      "name": "order_to_payment",
+      "steps": [
+        "orders.status = pending_payment",
+        "POST /api/payments/create-intent → Stripe PaymentIntent created",
+        "clientSecret returned to browser",
+        "Customer pays via Stripe.js",
+        "Stripe calls POST /api/webhooks/stripe",
+        "Signature verified: stripe.webhooks.constructEvent()",
+        "idempotency_keys check (prevent duplicate processing)",
+        "orders.status → confirmed (on payment_intent.succeeded)",
+        "payments row created/updated",
+        "payment_events audit entry"
+      ]
+    },
+    {
+      "name": "order_to_return",
+      "steps": [
+        "orders.status = delivered",
+        "checkReturnEligibility() validates: ownership, status, 30-day window",
+        "Return request created (return status: requested)",
+        "Admin approves → return_approved",
+        "Customer ships item back → return_in_transit",
+        "Item received + inspected → accepted | rejected_after_inspection",
+        "If accepted: refund issued via payment provider",
+        "inventory_levels.quantity += returned_qty (restock)",
+        "orders.status → refunded | partially_returned"
+      ]
+    },
+    {
+      "name": "cms_content_delivery",
+      "steps": [
+        "Request arrives at /{country}/{lang}/pages/{slug}",
+        "middleware sets x-country, x-language headers",
+        "CMS route handler reads headers",
+        "localized_cms_pages lookup: (page_id, country_id, lang_code)",
+        "If content IS NULL → fallback to country default language",
+        "If still null → 404",
+        "sanitizeCmsHtml() applied to HTML block content",
+        "CMSPageRenderer renders blocks"
+      ]
+    }
+  ]
+}

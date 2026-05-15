@@ -1,0 +1,185 @@
+{
+  "_meta": {
+    "description": "Machine-readable entity registry for the ecommerce platform knowledge graph.",
+    "generated": "2026-05-16",
+    "version": "1.0.0",
+    "note": "AUTO-GENERATION-READY: DB entities can be re-derived from migration files. Domain entities are human-curated.",
+    "source": "Code analysis of src/domain/, src/lib/, supabase/migrations/"
+  },
+  "db_entities": {
+    "auth_identity": {
+      "tables": ["profiles", "user_roles", "roles", "role_permissions", "permissions", "admin_action_logs"],
+      "primaryKey": "profiles.id",
+      "description": "User identity, roles, permissions, and admin audit trail"
+    },
+    "cart": {
+      "tables": ["carts", "cart_items", "cart_events"],
+      "primaryKey": "carts.id",
+      "description": "Shopping cart with items, lifecycle events, and guest session support",
+      "key_columns": {
+        "carts": ["id", "user_id", "session_id", "status", "country_id", "currency_code", "coupon_id", "coupon_code", "expires_at", "merged_from", "converted_to_order_id", "metadata"],
+        "cart_items": ["id", "cart_id", "variant_id", "quantity", "unit_price_snapshot"],
+        "cart_events": ["id", "cart_id", "event_type", "actor_id", "metadata"]
+      }
+    },
+    "order": {
+      "tables": ["orders", "order_items", "order_status_history", "order_address_snapshots"],
+      "primaryKey": "orders.id",
+      "description": "Immutable order record with pricing snapshot, item snapshots, and address snapshots",
+      "key_columns": {
+        "orders": ["id", "user_id", "order_number", "status", "item_count", "subtotal", "tax", "shipping", "discount", "total", "pricing_snapshot", "coupon_code", "notes", "metadata"],
+        "order_items": ["id", "order_id", "variant_id", "product_id", "quantity", "unit_price", "line_total", "status", "returned_quantity", "refunded_amount", "snapshot"],
+        "order_status_history": ["order_id", "from_status", "to_status", "reason", "metadata", "created_at"],
+        "order_address_snapshots": ["id", "order_id", "address_type", "first_name", "last_name", "address_line1", "address_line2", "city", "state", "postal_code", "country_code", "country_name", "source_address_id"]
+      }
+    },
+    "payment": {
+      "tables": ["payments", "payment_events", "idempotency_keys"],
+      "primaryKey": "payments.id",
+      "description": "Payment lifecycle with provider abstraction, events audit, and idempotency protection",
+      "key_columns": {
+        "payments": ["id", "order_id", "status", "provider", "amount", "currency", "provider_payment_id", "provider_order_id", "metadata"],
+        "payment_events": ["id", "payment_id", "order_id", "event_type", "provider", "amount", "payload"],
+        "idempotency_keys": ["key", "response_body", "created_at"]
+      }
+    },
+    "product_catalog": {
+      "tables": ["products", "product_variants", "product_images", "categories"],
+      "primaryKey": "products.id",
+      "description": "Product catalog with variants, images, and category hierarchy",
+      "key_columns": {
+        "products": ["id", "name", "slug", "description", "base_price", "is_active", "is_featured", "category_id"],
+        "product_variants": ["id", "product_id", "price", "options", "sku", "is_active"],
+        "product_images": ["id", "product_id", "url", "alt", "sort_order"]
+      }
+    },
+    "inventory": {
+      "tables": ["inventory_levels", "inventory_movements", "warehouses"],
+      "primaryKey": "inventory_levels.variant_id + inventory_levels.warehouse_id",
+      "description": "Inventory levels (quantity - reserved = available) with full audit movements",
+      "key_columns": {
+        "inventory_levels": ["variant_id", "warehouse_id", "quantity", "reserved"],
+        "inventory_movements": ["id", "variant_id", "type", "quantity", "previous_quantity", "new_quantity", "source_type", "source_id", "note", "created_by"],
+        "warehouses": ["id", "name", "is_default", "is_active"]
+      }
+    },
+    "coupon": {
+      "tables": ["coupons", "coupon_usage"],
+      "primaryKey": "coupons.id",
+      "description": "Discount coupons with per-user usage tracking",
+      "key_columns": {
+        "coupons": ["id", "code", "type", "value", "min_order_value", "max_discount", "usage_limit", "used_count", "valid_from", "valid_until", "is_active"],
+        "coupon_usage": ["coupon_id", "user_id", "created_at"]
+      }
+    },
+    "address": {
+      "tables": ["customer_addresses", "address_country_rules", "administrative_regions", "cities"],
+      "primaryKey": "customer_addresses.id",
+      "description": "Customer address book with country-specific validation rules and region/city lookup",
+      "key_columns": {
+        "customer_addresses": ["id", "user_id", "first_name", "last_name", "company", "phone", "email", "address_line1", "address_line2", "city", "state", "postal_code", "country_code", "country_id", "label", "is_default_shipping", "is_default_billing", "archived_at", "validation_metadata"],
+        "address_country_rules": ["country_id", "postal_code_required", "postal_code_regex", "state_required", "phone_required", "city_required"],
+        "administrative_regions": ["country_code", "code", "name", "type", "is_active"],
+        "cities": ["id", "country_code", "administrative_region_code", "name", "normalized_name", "is_active"]
+      }
+    },
+    "review": {
+      "tables": ["reviews"],
+      "primaryKey": "reviews.id",
+      "description": "Product reviews requiring verified purchase, one per product per user",
+      "key_columns": {
+        "reviews": ["id", "product_id", "user_id", "rating", "title", "body", "verified_purchase", "helpful_count", "unhelpful_count", "status"]
+      }
+    },
+    "cms": {
+      "tables": ["cms_pages", "cms_page_versions", "localized_cms_pages", "cms_blocks", "cms_navigation_menus", "cms_navigation_items", "cms_banners", "media_assets", "media_folders"],
+      "primaryKey": "cms_pages.id",
+      "description": "Country-first CMS with locale inheritance, block registry, navigation, banners, and media",
+      "key_columns": {
+        "cms_pages": ["id", "title", "slug", "parent_id", "status", "metadata"],
+        "cms_page_versions": ["id", "page_id", "version_number", "content", "status", "created_by"],
+        "localized_cms_pages": ["id", "page_id", "country_id", "language_code", "content", "published_version"],
+        "cms_blocks": ["id", "key", "content", "type"],
+        "cms_navigation_menus": ["id", "key", "country_id", "language_code", "items", "is_active"],
+        "cms_banners": ["id", "type", "content", "start_date", "end_date", "is_active"],
+        "media_assets": ["id", "folder_id", "filename", "url", "mime_type", "size", "metadata", "created_by"],
+        "media_folders": ["id", "name", "parent_id"]
+      }
+    }
+  },
+  "domain_entities": {
+    "CartSummary": {
+      "type": "DTO",
+      "source": "src/domain/cart/cart-types.ts",
+      "description": "Server-returned cart state. Authoritative view of cart for client.",
+      "fields": ["id", "status", "currency_code", "country_id", "items", "coupon_code", "pricing", "warnings", "item_count", "expires_at", "updated_at"]
+    },
+    "CartWarning": {
+      "type": "DTO",
+      "source": "src/domain/cart/cart-types.ts",
+      "values": ["PRICE_CHANGED", "LOW_STOCK", "ITEM_UNAVAILABLE", "QUANTITY_ADJUSTED", "COUPON_REMOVED", "CART_EXPIRED"]
+    },
+    "PriceBreakdown": {
+      "type": "DTO",
+      "source": "src/domain/pricing/pricing-engine.ts",
+      "description": "Output of calculatePricing() pure function",
+      "fields": ["subtotal", "discount", "taxableAmount", "tax", "taxRate", "taxLabel", "shipping", "total"]
+    },
+    "OrderPricingSnapshot": {
+      "type": "DTO",
+      "source": "src/domain/checkout/checkout-types.ts",
+      "description": "Immutable pricing record captured at order creation time. Stored in orders.pricing_snapshot JSON column.",
+      "fields": ["currency", "subtotal", "discount", "tax", "taxRate", "shipping", "total", "couponCode", "couponType", "couponValue", "lineItems"]
+    },
+    "CheckoutSummary": {
+      "type": "DTO",
+      "source": "src/domain/checkout/checkout-orchestrator.ts",
+      "description": "Output of buildCheckoutSummary(). Passed to create_order_atomic() RPC.",
+      "fields": ["validatedItems", "pricing", "coupon", "warnings", "pricingSnapshot"]
+    },
+    "CouponData": {
+      "type": "DTO",
+      "source": "src/domain/coupon/coupon-engine.ts",
+      "fields": ["id", "code", "type", "value", "maxDiscount", "minOrderValue"]
+    },
+    "LineItem": {
+      "type": "DTO",
+      "source": "src/domain/pricing/pricing-engine.ts",
+      "description": "Input to calculatePricing(). unitPrice comes from DB, never from client.",
+      "fields": ["variantId", "quantity", "unitPrice", "productName"]
+    },
+    "CartIdentity": {
+      "type": "DTO",
+      "source": "src/lib/cart/cart-service.ts",
+      "description": "Identifies cart owner. Either userId (authenticated) or sessionId (guest).",
+      "fields": ["userId?", "sessionId?"]
+    },
+    "AdminUser": {
+      "type": "DTO",
+      "source": "src/lib/admin/context.tsx",
+      "fields": ["user", "profile", "permissions", "hasPermission", "isAdmin", "isSuperAdmin"]
+    }
+  },
+  "state_machines": {
+    "CartStatus": {
+      "states": ["active", "abandoned", "expired", "merged", "converted", "deleted"],
+      "terminal_states": ["merged", "converted", "deleted"],
+      "mutable_states": ["active", "abandoned"],
+      "source": "src/domain/cart/cart-state-machine.ts"
+    },
+    "OrderStatus": {
+      "states": ["draft", "pending", "pending_payment", "confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "cancelled", "refunded", "return_requested", "return_approved", "return_rejected", "return_in_transit", "returned", "partially_returned", "replacement_requested", "replacement_approved", "replacement_rejected", "replacement_shipped", "replacement_delivered", "refund_requested", "refund_processing", "partially_refunded"],
+      "total_states": 25,
+      "terminal_states": ["delivered", "cancelled", "refunded", "return_rejected", "replacement_delivered", "partially_refunded"],
+      "source": "src/domain/order/order-state-machine.ts"
+    },
+    "PaymentStatus": {
+      "states": ["unpaid", "pending", "authorized", "paid", "failed", "refunded"],
+      "source": "src/domain/payment/payment-lifecycle.ts"
+    },
+    "ReturnStatus": {
+      "states": ["requested", "approved", "rejected", "pickup_scheduled", "in_transit", "received", "inspected", "accepted", "rejected_after_inspection", "refunded", "replaced", "closed"],
+      "source": "src/domain/returns/return-eligibility.ts"
+    }
+  }
+}

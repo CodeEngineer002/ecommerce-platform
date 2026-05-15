@@ -1,0 +1,150 @@
+{
+  "_meta": {
+    "description": "Key workflow definitions for the ecommerce platform knowledge graph.",
+    "generated": "2026-05-16",
+    "version": "1.0.0"
+  },
+  "workflows": {
+    "guest_cart_lifecycle": {
+      "title": "Guest Cart Lifecycle",
+      "trigger": "Unauthenticated user visits storefront",
+      "steps": [
+        "GET /api/cart: No user session, no guest_cart_session cookie",
+        "CartService.getOrCreateCart() creates new cart with session_id (UUID4 × 2)",
+        "Response sets guest_cart_session httpOnly cookie (30-day TTL)",
+        "Guest adds items: ownership verified by session cookie match",
+        "User logs in",
+        "POST /api/cart/merge: guest cart items merged into authenticated cart",
+        "Guest cart status → merged; carts.merged_from = guest_cart_id",
+        "guest_cart_session cookie cleared"
+      ],
+      "security": "httpOnly cookie prevents XSS reading; 256-bit entropy prevents brute-force; assertCartOwnership() prevents cross-session theft"
+    },
+    "order_placement": {
+      "title": "Order Placement Flow",
+      "trigger": "Customer submits checkout form",
+      "steps": [
+        "POST /api/orders/create with cartItems, addresses, paymentProvider, couponCode",
+        "buildCheckoutSummary(): validates cart items (re-fetches prices from DB)",
+        "buildCheckoutSummary(): validates coupon (soft check — usage, dates, minimum)",
+        "buildCheckoutSummary(): getTaxConfig(countryCode) → region-specific rates",
+        "buildCheckoutSummary(): calculatePricing() — pure function, server-side",
+        "If paymentProvider = 'stripe': create Stripe PaymentIntent → return clientSecret",
+        "Client collects payment via Stripe.js",
+        "Stripe webhook: POST /api/webhooks/stripe (payment_intent.succeeded)",
+        "Webhook verifies Stripe signature",
+        "Idempotency key checked (prevent duplicate processing)",
+        "create_order_atomic() RPC executes in single transaction",
+        "Order created; cart status → converted",
+        "Response: order_id, order_number returned to client"
+      ],
+      "error_paths": {
+        "P0001": "Insufficient stock → 409, show stock errors to customer",
+        "P0003": "Coupon limit exceeded → 409, remove coupon, show message",
+        "P0004": "Coupon already used → 409, remove coupon, show message",
+        "payment_failed": "Order cancelled, inventory reserved released"
+      }
+    },
+    "cart_merge": {
+      "title": "Guest-to-Authenticated Cart Merge",
+      "trigger": "Guest user logs in with active guest cart",
+      "steps": [
+        "POST /api/cart/merge with guestCartId",
+        "Verify guest cart ownership (session cookie match)",
+        "Verify authenticated cart ownership (user JWT)",
+        "If authenticated cart has items: merge (guest items added to auth cart, quantity caps applied)",
+        "If authenticated cart is empty: guest cart reassigned to user_id",
+        "Guest cart status → merged",
+        "Updated CartSummary returned",
+        "guest_cart_session cookie cleared"
+      ]
+    },
+    "return_flow": {
+      "title": "Return & Refund Flow",
+      "trigger": "Customer requests return on delivered order",
+      "steps": [
+        "checkReturnEligibility(orderId, userId): verify ownership, status=delivered, within 30-day window",
+        "Return request created (status: requested)",
+        "Admin reviews: approve or reject",
+        "If approved: pickup_scheduled → in_transit → received",
+        "Admin inspects item: accepted | rejected_after_inspection",
+        "If accepted: calculateRefund() → proportional items + tax + shipping (if full return)",
+        "Refund issued via payment provider (StripeProvider.refund())",
+        "inventory_levels.quantity += returned_qty (restock, explicit audit movement)",
+        "order_items.returned_quantity updated",
+        "Order status updated: refunded | partially_returned | partially_refunded"
+      ],
+      "edge_cases": [
+        "Partial return: only some items returned",
+        "Replacement instead of refund: replacement_shipped flow",
+        "Rejection after inspection: no refund, item returned to customer"
+      ]
+    },
+    "cms_content_publish": {
+      "title": "CMS Content Publishing",
+      "trigger": "CMS editor publishes page content",
+      "steps": [
+        "Editor edits localized_cms_pages for (country, language)",
+        "Content saved as draft in cms_page_versions",
+        "Editor clicks Publish",
+        "requireAdminPermission('cms:publish_locale') or 'cms:publish_country'",
+        "cms_page_versions.status → published",
+        "localized_cms_pages.published_version updated",
+        "Content immediately live for that locale"
+      ],
+      "inheritance_break": [
+        "Editor clicks 'Customize for this locale'",
+        "requireAdminPermission('cms:break_inheritance')",
+        "localized_cms_pages row created with content = {} (detached)",
+        "Audit entry in cms_inheritance_audit",
+        "Editor can now write locale-specific content"
+      ]
+    },
+    "address_validation": {
+      "title": "Address Validation at Checkout",
+      "trigger": "Customer enters shipping address",
+      "steps": [
+        "Client-side: quick format check (postal code regex)",
+        "POST /api/address/validate: server-side authoritative check",
+        "checkout-address-validator.ts reads x-country header",
+        "LocationService.getLocationAddressRules(countryIso): fetches address rules from DB",
+        "Validates: required fields, postal code format (regex), state validity (DB lookup), city validity",
+        "Returns: { valid: boolean, errors: Record<string, string>, normalized: address }",
+        "If invalid: show field errors to customer",
+        "If valid: address passed to order creation"
+      ]
+    },
+    "inventory_reservation": {
+      "title": "Inventory Reservation During Order Creation",
+      "trigger": "create_order_atomic() RPC executes",
+      "steps": [
+        "All variant_ids extracted from order items",
+        "SELECT FOR UPDATE on inventory_levels WHERE variant_id IN (...) ORDER BY variant_id",
+        "Sorted acquisition prevents deadlock (all transactions acquire in same order)",
+        "Check available = quantity - reserved >= requested for each variant",
+        "If any insufficient: RAISE EXCEPTION 'P0001' → rollback",
+        "UPDATE inventory_levels SET reserved = reserved + qty for each variant",
+        "Order creation proceeds",
+        "On order cancellation: reserved -= qty",
+        "On order delivery: quantity -= qty (actual stock deduction)"
+      ]
+    },
+    "locale_detection": {
+      "title": "Locale Detection & Routing",
+      "trigger": "Any storefront HTTP request",
+      "steps": [
+        "middleware.ts intercepts request",
+        "If /admin/* or /api/*: skip locale processing",
+        "If URL has /{country}/{lang}/: validate country and lang codes",
+        "If valid: use URL params as locale",
+        "If invalid country/lang: redirect to default",
+        "If URL is /: check cookies (x-locale-pref, x-country-pref, x-lang-pref)",
+        "If no cookies: check geo headers (cf-ipcountry, x-vercel-ip-country)",
+        "If no geo: parse Accept-Language header",
+        "If no match: default to /in/en/",
+        "Set request headers: x-country, x-language, x-locale-id, x-text-direction",
+        "Set/update locale cookies (1-year expiry)"
+      ]
+    }
+  }
+}

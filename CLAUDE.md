@@ -5,6 +5,118 @@ It describes what has been built, key architectural decisions, and what to be ca
 
 ---
 
+## Architecture Knowledge System
+
+A structured knowledge graph has been built for this project. Use it to orient yourself:
+
+| Need | Read This |
+|------|-----------|
+| Full system portrait | `docs/architecture/SYSTEM_OVERVIEW.md` |
+| Domain boundaries & ownership | `docs/architecture/DOMAIN_MAP.md` |
+| Service dependencies | `docs/architecture/DEPENDENCY_GRAPH.md` |
+| All API routes | `docs/architecture/API_MAP.md` |
+| Why a decision was made | `docs/ADRs/ADR-00X-*.md` |
+| All entities + state machines (JSON) | `docs/knowledge-graph/entities.json` |
+| All service methods (JSON) | `docs/knowledge-graph/services.json` |
+| All workflow steps (JSON) | `docs/knowledge-graph/workflows.json` |
+| All API routes (JSON) | `docs/knowledge-graph/APIs.json` |
+| RBAC permissions (JSON) | `docs/knowledge-graph/permissions.json` |
+| Complete doc index | `docs/README.md` |
+
+**ADRs (Architecture Decision Records):**
+- ADR-001: Country-first localization
+- ADR-002: Order immutability via snapshots
+- ADR-003: CMS inheritance model
+- ADR-004: Server-side pricing (never trust client)
+- ADR-005: Service-role client pattern
+- ADR-006: Atomic order creation via PostgreSQL RPC
+- ADR-007: Server-authoritative cart with client cache
+
+---
+
+---
+
+## Mandatory Knowledge Graph Synchronization
+
+This repository uses canonical architecture documentation and machine-readable knowledge graph files.
+
+Claude Code and all AI coding assistants MUST keep these files in sync with the actual codebase.
+
+### When This Rule Applies
+
+After implementing any major change, including:
+
+- new feature
+- refactor
+- API route change
+- database migration
+- domain service change
+- cart/checkout/order/payment/inventory change
+- CMS/localization/RBAC change
+- admin/backoffice change
+- state machine change
+- permission change
+- architectural decision change
+- removal of legacy code
+
+the assistant MUST update the architecture knowledge system before considering the task complete.
+
+### Required Sync Checklist
+
+For every major implementation, update whichever files are affected:
+
+| Change Type | Required Updates |
+|------------|------------------|
+| New/changed domain entity | `docs/knowledge-graph/entities.json` + relevant domain doc |
+| New/changed service or method | `docs/knowledge-graph/services.json` + `docs/architecture/DEPENDENCY_GRAPH.md` |
+| New/changed workflow | `docs/knowledge-graph/workflows.json` + relevant flow/domain doc |
+| New/changed API route | `docs/knowledge-graph/APIs.json` + `docs/architecture/API_MAP.md` |
+| New/changed permission | `docs/knowledge-graph/permissions.json` + `docs/architecture/RBAC.md` or relevant RBAC doc |
+| New/changed DB relationship | DB relationship docs + entity graph |
+| New architectural decision | New ADR under `docs/ADRs/` |
+| Removed/legacy feature | Remove stale docs/graph references |
+
+### Definition of Done
+
+A major feature is NOT complete until:
+
+1. implementation is complete
+2. tests are added/updated
+3. canonical docs are updated
+4. knowledge graph JSON files are updated
+5. API/dependency/domain maps are updated if affected
+6. ADRs are added/updated if architecture changed
+7. stale or conflicting docs are removed or archived
+8. documentation matches actual code
+
+### Important Rules
+
+- Code is the source of truth.
+- Do not trust old docs if they conflict with implementation.
+- Do not create duplicate architecture docs.
+- Do not leave prompt-generated planning docs as active canonical docs.
+- Do not update only markdown while leaving JSON knowledge graph stale.
+- Do not update only JSON while leaving canonical markdown stale.
+- Prefer modifying existing canonical docs over creating new overlapping docs.
+- If a doc is obsolete and confusing, merge useful content into canonical docs, then delete or archive it.
+- Archived docs must clearly say: `ARCHIVED — NOT CANONICAL. DO NOT USE FOR IMPLEMENTATION.`
+
+### Required Final Response After Major Changes
+
+At the end of every major implementation, Claude Code must report:
+
+- code changes completed
+- tests added/updated
+- docs updated
+- knowledge graph files updated
+- ADRs added/updated if any
+- stale docs removed/archived if any
+- remaining risks or manual follow-ups
+
+If no docs or knowledge graph changes were needed, explicitly explain why.
+
+---
+
 ## Project Summary
 
 **ShopNest** is a production-grade, full-stack ecommerce platform.

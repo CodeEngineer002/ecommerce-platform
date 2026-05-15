@@ -1,0 +1,274 @@
+{
+  "_meta": {
+    "description": "API route inventory for the ecommerce platform knowledge graph.",
+    "generated": "2026-05-16",
+    "version": "1.0.0",
+    "source": "src/app/api/",
+    "auth_values": ["public", "authenticated", "admin"],
+    "note": "AUTO-GENERATION-READY: Routes can be derived by scanning src/app/api/**/route.ts"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/cart",
+      "auth": "public",
+      "rate_limited": true,
+      "domain": "cart",
+      "description": "Get or create cart. Sets guest_cart_session cookie if new guest.",
+      "returns": "CartSummary"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/cart/[cartId]",
+      "auth": "public",
+      "ownership_check": "assertCartOwnership()",
+      "domain": "cart",
+      "description": "Abandon or delete cart."
+    },
+    {
+      "method": "POST",
+      "path": "/api/cart/[cartId]/items",
+      "auth": "public",
+      "rate_limited": true,
+      "ownership_check": "assertCartOwnership()",
+      "domain": "cart",
+      "description": "Add item to cart.",
+      "body": "{ variant_id: UUID, quantity: number }",
+      "returns": "CartSummary"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/cart/[cartId]/items/[variantId]",
+      "auth": "public",
+      "rate_limited": true,
+      "ownership_check": "assertCartOwnership()",
+      "domain": "cart",
+      "description": "Update item quantity.",
+      "body": "{ quantity: number }",
+      "returns": "CartSummary"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/cart/[cartId]/items/[variantId]",
+      "auth": "public",
+      "ownership_check": "assertCartOwnership()",
+      "domain": "cart",
+      "description": "Remove item from cart.",
+      "returns": "CartSummary"
+    },
+    {
+      "method": "POST",
+      "path": "/api/cart/merge",
+      "auth": "authenticated",
+      "domain": "cart",
+      "description": "Merge guest cart into authenticated cart on login.",
+      "body": "{ guestCartId: UUID }"
+    },
+    {
+      "method": "POST",
+      "path": "/api/orders/create",
+      "auth": "authenticated",
+      "rate_limited": true,
+      "domain": "order",
+      "description": "Create order. Calls buildCheckoutSummary() then create_order_atomic() RPC.",
+      "body": "{ cartItems, shippingAddress, billingAddress?, couponCode?, paymentProvider, notes? }",
+      "returns": "{ orderId, orderNumber }",
+      "errors": {
+        "P0001": "Insufficient stock",
+        "P0003": "Coupon usage limit exceeded",
+        "P0004": "Coupon already used by user"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/orders/[id]",
+      "auth": "authenticated",
+      "domain": "order",
+      "description": "Fetch order by ID. RLS enforced — users see own orders only.",
+      "returns": "Order with items, address snapshots"
+    },
+    {
+      "method": "GET",
+      "path": "/api/orders",
+      "auth": "authenticated",
+      "domain": "order",
+      "description": "List customer's orders.",
+      "returns": "Order[]"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payments/create-intent",
+      "auth": "authenticated",
+      "rate_limited": true,
+      "domain": "payment",
+      "description": "Create Stripe PaymentIntent. Returns clientSecret for Stripe.js.",
+      "body": "{ orderId: UUID }",
+      "returns": "{ clientSecret, amount, currency }"
+    },
+    {
+      "method": "POST",
+      "path": "/api/webhooks/stripe",
+      "auth": "webhook",
+      "domain": "payment",
+      "description": "Stripe webhook receiver. Verifies signature via stripe.webhooks.constructEvent(). Idempotency-protected.",
+      "events_handled": ["payment_intent.succeeded", "payment_intent.payment_failed", "charge.refunded"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/address/validate",
+      "auth": "public",
+      "rate_limited": true,
+      "domain": "address",
+      "description": "Server-side address validation against country rules.",
+      "body": "AddressInput + countryCode",
+      "returns": "{ valid: boolean, errors: Record<string, string>, normalized: address }"
+    },
+    {
+      "method": "GET",
+      "path": "/api/addresses",
+      "auth": "authenticated",
+      "domain": "address",
+      "description": "List customer's saved addresses (excluding archived).",
+      "returns": "CustomerAddress[]"
+    },
+    {
+      "method": "POST",
+      "path": "/api/addresses",
+      "auth": "authenticated",
+      "domain": "address",
+      "description": "Save new address to address book.",
+      "body": "AddressInput",
+      "returns": "CustomerAddress"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/addresses/[id]",
+      "auth": "authenticated",
+      "ownership_check": "assertAddressOwnership()",
+      "domain": "address",
+      "description": "Update saved address.",
+      "returns": "CustomerAddress"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/addresses/[id]",
+      "auth": "authenticated",
+      "ownership_check": "assertAddressOwnership()",
+      "domain": "address",
+      "description": "Archive address (soft delete — sets archived_at)."
+    },
+    {
+      "method": "GET",
+      "path": "/api/locations/[country]/regions",
+      "auth": "public",
+      "rate_limited": true,
+      "domain": "address",
+      "description": "List administrative regions (states/provinces) for a country.",
+      "returns": "Region[]"
+    },
+    {
+      "method": "GET",
+      "path": "/api/locations/[country]/[region]/cities",
+      "auth": "public",
+      "rate_limited": true,
+      "domain": "address",
+      "description": "City autocomplete within a region.",
+      "query_params": "q (search term)",
+      "returns": "City[]"
+    },
+    {
+      "method": "POST",
+      "path": "/api/coupons/validate",
+      "auth": "authenticated",
+      "rate_limited": true,
+      "domain": "coupon",
+      "description": "Preview coupon discount. Soft validation only — does not consume coupon.",
+      "body": "{ code: string, subtotal: number }",
+      "returns": "CouponData with calculated discount preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cms/[country]/[lang]/pages/[slug]",
+      "auth": "public",
+      "domain": "cms",
+      "description": "Deliver CMS page content. Locale fallback applied. HTML sanitized.",
+      "returns": "CMSPage with blocks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cms/[country]/[lang]/navigation/[key]",
+      "auth": "public",
+      "domain": "cms",
+      "description": "Deliver navigation menu for locale.",
+      "returns": "NavigationMenu"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cms/banners",
+      "auth": "public",
+      "domain": "cms",
+      "description": "List active promotional banners.",
+      "returns": "Banner[]"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/callback",
+      "auth": "public",
+      "domain": "auth",
+      "description": "Supabase OAuth callback handler."
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/confirm",
+      "auth": "public",
+      "domain": "auth",
+      "description": "Email confirmation handler (Supabase email flow)."
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/orders",
+      "auth": "admin",
+      "permission": "orders:read",
+      "rate_limited": false,
+      "domain": "order",
+      "description": "List all orders with filters. Admin-only.",
+      "returns": "Order[] with customer info"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/orders/[id]/status",
+      "auth": "admin",
+      "permission": "orders:manage",
+      "domain": "order",
+      "description": "Update order status. Admin-only.",
+      "body": "{ status: OrderStatus, reason?: string }"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/inventory",
+      "auth": "admin",
+      "permission": "inventory:read",
+      "domain": "inventory",
+      "description": "List inventory levels across all variants.",
+      "returns": "InventoryLevel[]"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/inventory",
+      "auth": "admin",
+      "permission": "inventory:write",
+      "domain": "inventory",
+      "description": "Adjust stock levels. Creates inventory_movements audit entry.",
+      "body": "{ variantId: UUID, delta: number, reason: string }"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/customers",
+      "auth": "admin",
+      "permission": "customers:read",
+      "domain": "auth",
+      "description": "List customer profiles.",
+      "returns": "Profile[]"
+    }
+  ]
+}

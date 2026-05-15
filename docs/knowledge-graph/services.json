@@ -1,0 +1,254 @@
+{
+  "_meta": {
+    "description": "Service inventory for the ecommerce platform knowledge graph.",
+    "generated": "2026-05-16",
+    "version": "1.0.0",
+    "source": "src/domain/, src/lib/"
+  },
+  "services": {
+    "CartService": {
+      "file": "src/lib/cart/cart-service.ts",
+      "type": "Class",
+      "db_client": "createServiceClient() — bypasses RLS (guest support)",
+      "methods": {
+        "getOrCreateCart": {
+          "params": ["identity: CartIdentity"],
+          "returns": "CartSummary",
+          "description": "Get active cart or create new one. Sets guest session cookie if new guest."
+        },
+        "addItem": {
+          "params": ["cartId: string", "variantId: string", "quantity: number", "identity: CartIdentity"],
+          "returns": "CartSummary",
+          "description": "Add item to cart. Checks ownership, stock, detects price changes. Recalculates pricing."
+        },
+        "updateItemQuantity": {
+          "params": ["cartId: string", "variantId: string", "quantity: number", "identity: CartIdentity"],
+          "returns": "CartSummary"
+        },
+        "removeItem": {
+          "params": ["cartId: string", "variantId: string", "identity: CartIdentity"],
+          "returns": "CartSummary"
+        },
+        "applyCoupon": {
+          "params": ["cartId: string", "couponCode: string", "identity: CartIdentity"],
+          "returns": "CartSummary"
+        },
+        "clearCart": {
+          "params": ["cartId: string", "identity: CartIdentity"],
+          "returns": "void"
+        }
+      },
+      "invariants": [
+        "assertCartOwnership() called before every mutation",
+        "Only active status carts can be mutated",
+        "calculatePricing() called after every mutation",
+        "Cart events recorded via recordCartEvent()"
+      ]
+    },
+    "CheckoutOrchestrator": {
+      "file": "src/domain/checkout/checkout-orchestrator.ts",
+      "type": "Function",
+      "db_client": "createServiceClient()",
+      "methods": {
+        "buildCheckoutSummary": {
+          "params": ["items: CartItem[]", "couponCode?: string", "userId: string", "countryCode: string"],
+          "returns": "CheckoutSummary",
+          "description": "Server-authoritative pre-order validation. Returns validated items, pricing, and immutable pricing snapshot.",
+          "steps": [
+            "validateCart() — re-fetches prices from DB, checks stock, detects price changes",
+            "validateCoupon() — soft validation (usage, dates, minimum order)",
+            "getTaxConfig(countryCode) — region-specific rates",
+            "calculatePricing() — pure function, server-side",
+            "Build pricingSnapshot — immutable record for order creation"
+          ]
+        }
+      }
+    },
+    "PricingEngine": {
+      "file": "src/domain/pricing/pricing-engine.ts",
+      "type": "Pure Function",
+      "db_client": "None — no DB access",
+      "methods": {
+        "calculatePricing": {
+          "params": ["lineItems: LineItem[]", "coupon?: CouponData", "shippingConfig?: ShippingConfig", "taxConfig?: TaxConfig"],
+          "returns": "PriceBreakdown",
+          "description": "Pure function. No side effects. Called from cart, checkout, and order creation.",
+          "algorithm": [
+            "subtotal = Σ(unitPrice × quantity)",
+            "discount = calculateDiscount(subtotal, coupon)",
+            "taxable = max(0, subtotal - discount)",
+            "tax = round2(taxable × taxRate)",
+            "shipping = (subtotal >= freeThreshold) ? 0 : flatRate",
+            "total = max(0, taxable + tax + shipping)"
+          ]
+        },
+        "calculateDiscount": {
+          "params": ["subtotal: number", "coupon: CouponData"],
+          "returns": "number",
+          "description": "percentage: min((subtotal × value) / 100, maxDiscount); fixed: min(value, maxDiscount). Always capped at subtotal."
+        }
+      }
+    },
+    "CouponEngine": {
+      "file": "src/domain/coupon/coupon-engine.ts",
+      "type": "Function",
+      "db_client": "createServiceClient()",
+      "methods": {
+        "validateCoupon": {
+          "params": ["code: string", "userId: string", "subtotal: number"],
+          "returns": "CouponData | throws CouponError",
+          "validations": [
+            "Coupon exists and is_active = true",
+            "valid_from <= now",
+            "valid_until >= now",
+            "used_count < usage_limit",
+            "No existing coupon_usage for this user",
+            "subtotal >= min_order_value"
+          ]
+        }
+      }
+    },
+    "AddressService": {
+      "file": "src/domain/address/address-service.ts",
+      "type": "Class",
+      "db_client": "createServiceClient()",
+      "methods": {
+        "createAddress": {"params": ["userId: string", "data: AddressInput"], "returns": "CustomerAddress"},
+        "updateAddress": {"params": ["addressId: string", "userId: string", "data: Partial<AddressInput>"], "returns": "CustomerAddress"},
+        "archiveAddress": {"params": ["addressId: string", "userId: string"], "returns": "void", "description": "Soft delete — sets archived_at"},
+        "listAddresses": {"params": ["userId: string"], "returns": "CustomerAddress[]"},
+        "setDefaults": {"params": ["userId: string", "addressId: string", "type: 'shipping' | 'billing'"], "returns": "void"}
+      }
+    },
+    "LocationService": {
+      "file": "src/domain/address/location-service.ts",
+      "type": "Service",
+      "db_client": "createServiceClient()",
+      "caching": "In-process cache per cold start",
+      "methods": {
+        "getRegions": {"params": ["countryCode: string"], "returns": "Region[]"},
+        "getLocationAddressRules": {"params": ["countryIso: string"], "returns": "AddressCountryRules"},
+        "searchCities": {"params": ["countryCode: string", "regionCode: string", "query: string"], "returns": "City[]"},
+        "isValidRegion": {"params": ["countryCode: string", "regionCode: string"], "returns": "boolean"},
+        "isValidCity": {"params": ["countryCode: string", "regionCode: string", "cityName: string"], "returns": "boolean"}
+      }
+    },
+    "StockGuard": {
+      "file": "src/domain/inventory/stock-guard.ts",
+      "type": "Functions",
+      "db_client": "createServiceClient()",
+      "methods": {
+        "checkStock": {
+          "params": ["items: { variantId: string, quantity: number }[]"],
+          "returns": "{ variantId, available, requested, sufficient }[]",
+          "description": "Soft pre-flight check. NO row locking. Use before checkout form display."
+        },
+        "assertSufficientStock": {
+          "params": ["items: { variantId: string, quantity: number }[]"],
+          "returns": "void | throws InsufficientStockError",
+          "description": "Hard pre-flight. Throws if any item has insufficient stock. Still not a DB lock."
+        }
+      }
+    },
+    "InventoryMovement": {
+      "file": "src/domain/inventory/inventory-movement.ts",
+      "type": "Functions",
+      "methods": {
+        "recordInventoryMovement": {"description": "Creates audit entry in inventory_movements"},
+        "adjustInventory": {
+          "params": ["variantId: string", "delta: number", "reason: string", "actorId: string"],
+          "description": "Admin stock adjustment. Prevents reserved stock from being removed."
+        },
+        "getInventoryMovements": {"params": ["variantId: string", "limit: number"], "returns": "InventoryMovement[]"}
+      }
+    },
+    "ReturnEligibility": {
+      "file": "src/domain/returns/return-eligibility.ts",
+      "type": "Functions",
+      "methods": {
+        "checkReturnEligibility": {
+          "params": ["orderId: string", "userId: string"],
+          "returns": "{ eligible: boolean, reason?: string }",
+          "checks": [
+            "Order belongs to user",
+            "Order status is 'delivered'",
+            "Delivered timestamp from order_status_history",
+            "Return window (30 days) not expired"
+          ]
+        }
+      }
+    },
+    "RefundCalculator": {
+      "file": "src/domain/returns/refund-calculator.ts",
+      "type": "Pure Function",
+      "db_client": "None",
+      "methods": {
+        "calculateRefund": {
+          "params": ["ReturnCalculationInput"],
+          "returns": "RefundBreakdown",
+          "description": "Pure function. Calculates proportional refund including tax and optional shipping."
+        }
+      }
+    },
+    "PaymentProviders": {
+      "interface": "IPaymentProvider",
+      "implementations": {
+        "StripeProvider": {
+          "file": "src/lib/payment/stripe-provider.ts",
+          "status": "ACTIVE",
+          "methods": {
+            "createIntent": {"returns": "{ clientSecret, providerOrderId, amount, currency }"},
+            "verifyPayment": {"params": ["providerPaymentId: string"]},
+            "refund": {"params": ["paymentId: string", "amount?: number"]}
+          }
+        },
+        "RazorpayProvider": {
+          "file": "src/lib/payment/razorpay-provider.ts",
+          "status": "DISABLED — no webhook handler. Do NOT re-enable without implementing webhook.",
+          "methods": {
+            "createIntent": "Creates Razorpay order",
+            "verifyPayment": "HMAC-SHA256 signature verification"
+          }
+        },
+        "CODProvider": {
+          "status": "ACTIVE",
+          "behavior": "Auto-confirms order on creation. No async payment flow."
+        }
+      }
+    },
+    "AdminPermissions": {
+      "file": "src/lib/admin/permissions.ts",
+      "type": "Server Function",
+      "methods": {
+        "requireAdminPermission": {
+          "params": ["permission: PermissionCode"],
+          "description": "Server component guard. Verifies auth.uid(), role, and calls has_permission() RPC. Logs to admin_action_logs. Throws ForbiddenError if fails."
+        }
+      }
+    },
+    "LocaleResolver": {
+      "file": "src/lib/i18n/locale-resolver.ts",
+      "type": "Function",
+      "methods": {
+        "resolveLocale": {
+          "description": "Priority: URL params → cookies → geo/IP (cf-ipcountry, x-vercel-ip-country) → Accept-Language → default (India/English)",
+          "returns": "{ country, language, localeId, textDirection }"
+        }
+      }
+    },
+    "CMSDeliveryService": {
+      "file": "src/lib/cms/",
+      "type": "Functions",
+      "methods": {
+        "resolveCMSContent": {
+          "description": "Locale fallback: exact (country, lang) → country default lang → null (404)",
+          "note": "NULL in localized_cms_pages.content = inherit from country default lang"
+        },
+        "sanitizeCmsHtml": {
+          "file": "src/lib/cms/sanitize.ts",
+          "description": "Whitelist-based HTML sanitizer. Always applied before returning CMS content."
+        }
+      }
+    }
+  }
+}

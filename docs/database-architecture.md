@@ -47,13 +47,13 @@ Enterprise PostgreSQL/Supabase schema for a global, multi-region, CMS-driven eco
 
 ## Key Architectural Decisions
 
-### 1. Inventory Strategy — Two-tier
+### 1. Inventory Strategy — `inventory_levels` is the Single Source of Truth
 
-**Simple mode** (`inventory` table): Single row per variant, `quantity - reserved = available`. Used for the MVP storefront. All existing application code uses this.
+> **⚠️ IMPORTANT (migration 00017):** The legacy `inventory` table still exists in the DB for historical data but **must not be read or written by application code**. `inventory_levels` is the authoritative source.
 
-**Multi-warehouse mode** (`inventory_levels` table): One row per `(warehouse_id, variant_id)`. Available stock = sum over all warehouses of `(quantity - reserved)`. Use this when multi-warehouse fulfillment is needed.
+**Active mode** (`inventory_levels` table): One row per `(warehouse_id, variant_id)`. Available stock = `quantity - reserved`. The `create_order_atomic` RPC locks rows with `SELECT FOR UPDATE ORDER BY variant_id` (deadlock-safe). `release_inventory_reservation(p_order_id)` releases reserved stock on cancellation.
 
-The `reserve_inventory()` function targets `inventory` (simple mode). Extend it to target `inventory_levels` when activating multi-warehouse.
+**Legacy table** (`inventory`): Retained for historical reference only. Do not use in new code — see CLAUDE.md Step 1 for full context.
 
 ### 2. Pricing Strategy — Price Lists
 
@@ -91,12 +91,11 @@ The platform uses a hybrid auth model:
 System roles and their permissions:
 | Role | Permissions |
 |---|---|
-| `super_admin` | All |
-| `admin` | All |
-| `catalog_manager` | catalog:*, inventory:read |
-| `order_manager` | orders:*, customers:read, inventory:read |
-| `content_manager` | cms:*, catalog:read |
-| `regional_manager` | Read all + orders:manage |
+| `super_admin` | All (bypasses per-permission checks) |
+| `admin` | Only explicitly granted permissions (fine-grained via `role_permissions`) |
+| `customer` | None (storefront access only) |
+
+> **Note:** Unlike early design, `admin` does NOT automatically have all permissions. Permissions are granted per-admin via `role_permissions`. Legacy admins who predate RBAC have an allow-all fallback during transition. See `docs/admin-architecture.md` and `docs/knowledge-graph/permissions.json` for the full 25-permission code list.
 
 ---
 
@@ -148,4 +147,14 @@ Append-only audit log. No UPDATE/DELETE policies — once written, immutable. `b
 00008 — Enterprise core (currencies, warehouses, pricing, RBAC, checkout, refunds, audit)
 00009 — Catalog v2 (localizations, options, attributes, collections, m2m categories)
 00010 — CMS v2 + media + shipping (versioning, blocks, navigation, banners, media, shipping)
+00011 — Order management (order_address_snapshots, cart_events, order_events)
+00012 — Cart domain (guest cart, cart_events full schema, session_id support)
+00013 — Address domain (customer_addresses, address_country_rules)
+00014 — Location domain (administrative_regions, cities)
+00015 — CMS inheritance (cms_inheritance_audit, inheritance states)
+00016 — Country product scope
+00017 — Inventory unification (inventory_levels → single source of truth; legacy inventory retired)
+00018 — Scheduled jobs (pg_cron: expire_abandoned_carts, cancel_unpaid_orders; restored update_order_status state machine)
 ```
+
+> See `docs/architecture/SYSTEM_OVERVIEW.md` for a full migration summary table.

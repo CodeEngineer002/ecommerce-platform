@@ -48,34 +48,34 @@ src/domain/
 - `products` — core product data (name, slug, pricing, SEO)
 - `product_variants` — SKU-level variants (size, color, etc.)
 - `product_images` — ordered images per product
-- `inventory` — current stock per variant (quantity, reserved)
+- `inventory_levels` — multi-warehouse stock per variant (quantity, reserved); `available = quantity - reserved`
 - `inventory_movements` — full audit ledger of every stock change
 
 ### Orders and Fulfillment
-- `orders` — order record with dual status tracking:
-  - `status` — overall order lifecycle
-  - `fulfillment_status` — physical goods lifecycle
-- `order_items` — line items with price snapshots
+- `orders` — order record with immutable `pricing_snapshot` JSON
+- `order_items` — line items with price snapshots and product detail snapshots
+- `order_address_snapshots` — immutable address copies frozen at order time
 - `order_status_history` — immutable transition audit log
 - `shipment_tracking` — carrier and tracking information
 
 ### Payments
 - `payments` — payment record per order
 - `payment_events` — full payment audit log
+- `idempotency_keys` — deduplication for client retries
 
 ### Promotions
 - `coupons` — coupon definitions
 - `coupon_usage` — per-user usage tracking (prevents double-use race condition)
 
 ### Returns and Refunds
-- `return_requests` — return initiation record
-- `return_items` — line items being returned
+- `return_requests` / `order_returns` — return initiation record
+- `return_items` / `order_return_items` — line items being returned
+- `refund_requests` — refund records (can exist without a return)
 
 ### User Data
 - `profiles` — user profile, role, contact info
-- `addresses` — saved shipping/billing addresses
+- `customer_addresses` — saved shipping/billing addresses (soft-deleted via `archived_at`)
 - `carts` / `cart_items` — persistent cart (guest and authenticated)
-- `wishlists` — saved products
 - `reviews` — verified purchase reviews
 
 ## Architectural Principles
@@ -110,11 +110,12 @@ See `src/lib/errors.ts` for the complete hierarchy.
 
 ## Future Extension Points
 
-| Feature | Extension Point |
-|---------|----------------|
-| Multi-currency | Add `currency` field to pricing engine; swap `CURRENCY` constant |
-| Tax provider | Replace `TAX_RATE` constant with `TaxProvider` interface in pricing engine |
-| Shipping provider | Add strategies to `ShippingStrategy` in shipping calculator |
-| Multi-warehouse | Add `warehouse_id` to `inventory` and `inventory_movements` |
-| B2B pricing | Add `price_lists` table; inject into pricing engine |
-| Marketplace/vendor | Add `vendor_id` to `products` and `orders` |
+| Feature | Extension Point | Status |
+|---------|----------------|--------|
+| Multi-currency | Add `currency` field to pricing engine; capture exchange rate in `pricing_snapshot` | Planned |
+| External tax provider | Replace `getTaxConfig()` with Avalara/TaxJar API (interface already abstracted) | Planned |
+| Shipping provider API | Add strategies to `ShippingStrategy` in shipping calculator | Planned |
+| B2B pricing tiers | Add customer tier injection into `calculatePricing()` | Planned |
+| Marketplace/vendor | Add `vendor_id` to `products` and `orders` | Planned |
+
+> **Already implemented:** Multi-warehouse inventory (`inventory_levels`, migration 00017) and country-specific tax (`getTaxConfig()`, migration/Step 3) are complete. See `CLAUDE.md` for the full hardening status.

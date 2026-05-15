@@ -1,0 +1,147 @@
+{
+  "_meta": {
+    "description": "RBAC permission codes for the ecommerce platform.",
+    "generated": "2026-05-16",
+    "version": "1.0.0",
+    "source": "src/lib/admin/permissions.ts",
+    "total_permissions": 25,
+    "enforcement": "Three-layer: Server Component (requireAdminPermission) → Client UX (useAdminContext) → DB RLS (has_permission RPC)"
+  },
+  "roles": {
+    "customer": {
+      "description": "Regular authenticated user. No admin permissions.",
+      "permissions": []
+    },
+    "admin": {
+      "description": "Staff member. Has only explicitly granted permissions.",
+      "permissions": "subset of all permission codes — assigned per user"
+    },
+    "super_admin": {
+      "description": "Full access. Bypasses all per-permission checks.",
+      "permissions": "ALL"
+    }
+  },
+  "permissions": {
+    "catalog": {
+      "catalog:read": {
+        "description": "View products, variants, categories in admin",
+        "guarded_routes": ["/admin/products", "/admin/categories"]
+      },
+      "catalog:write": {
+        "description": "Create, update, delete products and categories",
+        "guarded_routes": ["/admin/products/new", "/admin/products/[id]/edit"]
+      }
+    },
+    "inventory": {
+      "inventory:read": {
+        "description": "View inventory levels and movements",
+        "guarded_routes": ["/admin/inventory"]
+      },
+      "inventory:write": {
+        "description": "Adjust stock levels",
+        "guarded_routes": ["PATCH /api/admin/inventory"]
+      }
+    },
+    "orders": {
+      "orders:read": {
+        "description": "View all orders across all customers",
+        "guarded_routes": ["/admin/orders", "GET /api/admin/orders"]
+      },
+      "orders:manage": {
+        "description": "Update order status, process returns, issue refunds",
+        "guarded_routes": ["PATCH /api/admin/orders/[id]/status"]
+      }
+    },
+    "customers": {
+      "customers:read": {
+        "description": "View customer profiles and order history",
+        "guarded_routes": ["/admin/customers"]
+      },
+      "customers:write": {
+        "description": "Edit customer accounts, reset passwords",
+        "guarded_routes": ["/admin/customers/[id]/edit"]
+      }
+    },
+    "cms": {
+      "cms:read": {
+        "description": "View CMS pages, blocks, navigation in admin",
+        "guarded_routes": ["/admin/cms"]
+      },
+      "cms:edit": {
+        "description": "Edit CMS page content, blocks, navigation items"
+      },
+      "cms:publish": {
+        "description": "Publish CMS content (both country and locale level)"
+      },
+      "cms:preview": {
+        "description": "Preview unpublished CMS content"
+      },
+      "cms:manage_navigation": {
+        "description": "Create, edit, delete navigation menus"
+      },
+      "cms:manage_banners": {
+        "description": "Create, edit, delete promotional banners"
+      },
+      "cms:manage_media": {
+        "description": "Upload, organize, delete media assets"
+      },
+      "cms:manage_country_content": {
+        "description": "Edit country-level CMS content (source of inheritance)"
+      },
+      "cms:manage_locale_content": {
+        "description": "Edit locale-level CMS content overrides"
+      },
+      "cms:break_inheritance": {
+        "description": "Break locale content inheritance from country (create locale override)",
+        "note": "High-impact permission — creates divergence in content tree"
+      },
+      "cms:restore_inheritance": {
+        "description": "Restore locale content to inherit from country (removes override)"
+      },
+      "cms:publish_country": {
+        "description": "Publish country-level CMS content"
+      },
+      "cms:publish_locale": {
+        "description": "Publish locale-level CMS content overrides"
+      }
+    },
+    "analytics": {
+      "analytics:read": {
+        "description": "View analytics dashboard and reports",
+        "guarded_routes": ["/admin/analytics"]
+      }
+    }
+  },
+  "db_functions": {
+    "is_admin": {
+      "type": "SECURITY DEFINER (STABLE)",
+      "description": "Returns true if auth.uid() has role = 'admin' OR 'super_admin'",
+      "used_in": "RLS policies for all admin-accessible tables"
+    },
+    "has_permission": {
+      "type": "SECURITY DEFINER (STABLE)",
+      "params": ["p_permission_code TEXT"],
+      "description": "Returns true if auth.uid() is super_admin OR has explicit permission grant",
+      "used_in": "requireAdminPermission() server component, RLS policies"
+    }
+  },
+  "enforcement_layers": {
+    "layer_1_server_component": {
+      "function": "requireAdminPermission(code: PermissionCode)",
+      "file": "src/lib/admin/permissions.ts",
+      "when": "Before rendering any admin Server Component or before any admin API route handler",
+      "side_effect": "Logs to admin_action_logs table (errors swallowed — audit never breaks main request)"
+    },
+    "layer_2_client_ux": {
+      "hook": "useAdminContext()",
+      "file": "src/lib/admin/context.tsx",
+      "method": "hasPermission(code: PermissionCode): boolean",
+      "warning": "UI-only gate. NOT authoritative. Server must always re-check."
+    },
+    "layer_3_db_rls": {
+      "function": "has_permission(p_permission_code)",
+      "when": "DB RLS policies on admin-accessible tables",
+      "note": "Final enforcement layer. Even if layers 1 and 2 are bypassed, DB rejects unauthorized access."
+    }
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "_meta": {
+    "description": "Index of all Architecture Decision Records (ADRs) for the ecommerce platform.",
+    "generated": "2026-05-16",
+    "version": "1.0.0"
+  },
+  "adrs": [
+    {
+      "id": "ADR-001",
+      "title": "Country-First Localization",
+      "file": "docs/ADRs/ADR-001-country-first-localization.md",
+      "status": "Accepted",
+      "date": "2026-05-16",
+      "domains": ["localization", "globalization", "cms"],
+      "summary": "Country is the primary business context (tax, currency, shipping). Language is a presentation layer. URL structure: /{country}/{lang}/{path}.",
+      "key_invariants": [
+        "Business config keyed by country_id, not language",
+        "CMS content keyed by (country_id, language_code)",
+        "Region config (tax/currency/shipping) is country-specific"
+      ]
+    },
+    {
+      "id": "ADR-002",
+      "title": "Order Immutability via Snapshot Pattern",
+      "file": "docs/ADRs/ADR-002-order-immutability.md",
+      "status": "Accepted",
+      "date": "2026-05-16",
+      "domains": ["order", "checkout"],
+      "summary": "Order pricing, line items, and addresses are captured as immutable snapshots at order creation time. Three snapshot types: pricing_snapshot JSON, order_items.snapshot JSON, order_address_snapshots table.",
+      "key_invariants": [
+        "orders.pricing_snapshot is never updated after insertion",
+        "order_items.snapshot is never updated after insertion",
+        "order_address_snapshots rows are never updated",
+        "Refunds always use order_items.unit_price, not current prices"
+      ]
+    },
+    {
+      "id": "ADR-003",
+      "title": "CMS Inheritance Model",
+      "file": "docs/ADRs/ADR-003-cms-inheritance-model.md",
+      "status": "Accepted",
+      "date": "2026-05-16",
+      "domains": ["cms"],
+      "summary": "CMS content uses country-first inheritance: locale-level content inherits from country-level by default. Three states: inherited (NULL), overridden (content JSON), detached (empty JSON). Breaking inheritance requires explicit cms:break_inheritance permission.",
+      "key_invariants": [
+        "NULL content in localized_cms_pages = inherit from country default lang",
+        "No global/master content layer — country is the base",
+        "Fallback chain: exact locale → country default lang → 404"
+      ]
+    },
+    {
+      "id": "ADR-004",
+      "title": "Server-Side Pricing",
+      "file": "docs/ADRs/ADR-004-server-side-pricing.md",
+      "status": "Accepted",
+      "date": "2026-05-16",
+      "domains": ["pricing", "cart", "checkout", "order"],
+      "summary": "All authoritative pricing is calculated server-side. calculatePricing() is a pure function called from cart mutations, checkout validation, and order creation. Client never submits prices — only variant_id and quantity.",
+      "key_invariants": [
+        "Client submits variant_id + quantity only — never prices",
+        "calculatePricing() is always called server-side for authoritative pricing",
+        "round2() used for all monetary calculations",
+        "Price changes detected at PRICE_CHANGE_TOLERANCE = 0.01"
+      ]
+    },
+    {
+      "id": "ADR-005",
+      "title": "Service-Role Client Pattern",
+      "file": "docs/ADRs/ADR-005-service-role-client-pattern.md",
+      "status": "Accepted",
+      "date": "2026-05-16",
+      "domains": ["security", "cart", "order", "address"],
+      "summary": "Domain services use createServiceClient() (bypasses RLS) to support guest operations and cross-table transactions. Security enforced at application service layer via ownership assertions (assertCartOwnership, assertAddressOwnership).",
+      "key_invariants": [
+        "createServiceClient() only imported in src/lib/ (never in route handlers)",
+        "Every service method using service client calls ownership assertion",
+        "SUPABASE_SERVICE_ROLE_KEY is server-only (not NEXT_PUBLIC_)"
+      ]
+    },
+    {
+      "id": "ADR-006",
+      "title": "Atomic Order Creation via PostgreSQL RPC",
+      "file": "docs/ADRs/ADR-006-atomic-order-creation.md",
+      "status": "Accepted",
+      "date": "2026-05-16",
+      "domains": ["order", "inventory", "coupon"],
+      "summary": "All order creation logic in single PostgreSQL function create_order_atomic(). Prevents race conditions (overselling, coupon abuse) via row-level locking in sorted variantId order. Returns specific error codes for business failures.",
+      "key_invariants": [
+        "create_order_atomic() is the ONLY valid order creation path",
+        "Inventory locks acquired in variantId sort order (deadlock prevention)",
+        "Coupon re-validated inside transaction (prevents race condition)",
+        "Error codes: P0001 (stock), P0003 (coupon limit), P0004 (coupon reuse)"
+      ]
+    },
+    {
+      "id": "ADR-007",
+      "title": "Server-Authoritative Cart with Client Cache",
+      "file": "docs/ADRs/ADR-007-cart-server-authority.md",
+      "status": "Accepted",
+      "date": "2026-05-16",
+      "domains": ["cart"],
+      "summary": "Cart state lives in Supabase DB (server-authoritative). Zustand store is display cache only. Guest carts use httpOnly cookie (256-bit entropy). Every cart mutation hits the server.",
+      "key_invariants": [
+        "Zustand serverCart is always populated from server response, never computed locally",
+        "guest_cart_session cookie is httpOnly, SameSite=Lax, 30-day TTL",
+        "Only active status carts allow mutations"
+      ]
+    }
+  ],
+  "pending_adrs": [
+    {
+      "id": "ADR-008",
+      "title": "Delivery Layer Abstraction",
+      "status": "Proposed",
+      "domains": ["cms"],
+      "summary": "CMS content delivery should be abstracted from storage mechanism. Future: headless CMS swap possible."
+    },
+    {
+      "id": "ADR-009",
+      "title": "Multi-Currency Architecture",
+      "status": "Proposed",
+      "domains": ["pricing", "cart", "order"],
+      "summary": "Cross-border purchases require exchange rate capture at order time. Pricing engine extension needed."
+    },
+    {
+      "id": "ADR-010",
+      "title": "External Tax Provider Integration",
+      "status": "Proposed",
+      "domains": ["pricing"],
+      "summary": "Replace getTaxConfig() with Avalara/TaxJar API for accurate real-time tax rates. Interface already abstracted."
+    }
+  ]
+}

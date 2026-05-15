@@ -24,56 +24,47 @@ A complete, full-stack ecommerce platform built with Next.js 15, Supabase, TypeS
 ```
 src/
 ├── app/
-│   ├── (storefront)/        # Customer-facing pages
-│   │   ├── page.tsx         # Homepage
-│   │   ├── products/        # PLP + PDP
-│   │   ├── categories/      # Category pages
-│   │   ├── cart/            # Cart page
-│   │   ├── checkout/        # Checkout
-│   │   ├── orders/          # Order history + detail
-│   │   ├── profile/         # User profile
-│   │   ├── wishlist/        # Wishlist
-│   │   └── search/          # Search results
-│   ├── (auth)/              # Login, Register, Forgot Password
-│   ├── admin/               # Admin dashboard
-│   │   ├── page.tsx         # Dashboard overview
-│   │   ├── products/        # CRUD with image upload
-│   │   ├── categories/      # Category management
-│   │   ├── orders/          # Order management
-│   │   ├── customers/       # Customer list
-│   │   ├── inventory/       # Stock management
-│   │   ├── analytics/       # Revenue + stats
-│   │   └── cms/             # CMS pages editor
-│   └── api/
-│       ├── orders/create/   # Order creation + payment init
-│       ├── auth/signout/    # Sign out handler
-│       └── webhooks/stripe/ # Stripe webhook
+│   ├── [country]/[lang]/        # Storefront (locale-aware: /in/hi/, /de/de/, /ae/ar/)
+│   │   ├── page.tsx             # Homepage
+│   │   ├── products/            # PLP + PDP
+│   │   ├── categories/          # Category pages
+│   │   ├── cart/                # Cart page
+│   │   ├── checkout/            # Checkout
+│   │   ├── orders/              # Order history + detail
+│   │   ├── profile/             # User profile + addresses
+│   │   ├── pages/               # CMS-driven pages
+│   │   ├── search/              # Search results
+│   │   └── categories/          # Category listing
+│   ├── (auth)/                  # Login, Register, Forgot Password
+│   ├── admin/                   # Admin dashboard (RBAC)
+│   │   ├── page.tsx             # Dashboard overview
+│   │   ├── products/            # CRUD with image upload
+│   │   ├── categories/          # Category management
+│   │   ├── orders/              # Order management
+│   │   ├── customers/           # Customer list
+│   │   ├── inventory/           # Stock management
+│   │   ├── analytics/           # Revenue + stats
+│   │   └── cms/                 # CMS editor (country/language scoped)
+│   └── api/                     # REST API routes
+├── domain/                      # Pure business logic (no Next.js deps)
+│   ├── cart/, checkout/, order/, payment/, pricing/
+│   ├── inventory/, address/, coupon/, returns/, review/
 ├── components/
-│   ├── ui/                  # shadcn/ui base primitives
-│   ├── common/              # FormField, Pagination, StatusBadge, etc.
-│   ├── ecommerce/           # ProductCard, CartDrawer, PriceDisplay, etc.
-│   ├── feedback/            # EmptyState, LoadingState, ErrorState
-│   └── layout/              # Navbar, Footer
-├── features/
-│   ├── products/            # types → service → hooks → components
-│   ├── auth/                # Auth service + hooks
-│   ├── orders/              # Order service + hooks
-│   ├── admin/               # Admin services + hooks
-│   └── cms/                 # CMS service + hooks
-├── lib/
-│   ├── supabase/            # client, server, middleware
-│   ├── payment/             # Stripe + Razorpay abstraction
-│   ├── utils.ts             # Shared utilities
-│   ├── constants.ts         # App constants
-│   └── validators/          # Zod schemas
-├── store/
-│   ├── cart-store.ts        # Zustand cart (persisted)
-│   ├── wishlist-store.ts    # Zustand wishlist (persisted)
-│   └── ui-store.ts          # Zustand UI state
+│   ├── ui/                      # Base primitives (shadcn/ui + Radix UI)
+│   ├── common/                  # FormField, Pagination, StatusBadge, etc.
+│   ├── ecommerce/               # ProductCard, CartDrawer, PriceDisplay, etc.
+│   ├── feedback/                # EmptyState, LoadingState, ErrorState
+│   └── layout/                  # Navbar, Footer
+├── features/                    # Feature-level UI (cart, checkout, orders, cms, auth, etc.)
+├── lib/                         # Shared infrastructure (supabase, i18n, payment, admin)
+├── store/                       # Zustand (cart display cache, user session)
 └── types/
-    ├── database.types.ts    # Supabase schema types
-    └── index.ts             # App domain types
+    ├── database.types.ts          # Supabase schema types
+    └── index.ts                   # App domain types
 ```
+
+> **URL structure:** `/{country}/{lang}/{path}` — e.g. `/in/hi/products`, `/de/de/checkout`, `/ae/ar/cart`
+> Supports 8 countries × 7 languages = 14 locales. See `docs/globalization-architecture.md`.
 
 ---
 
@@ -145,13 +136,9 @@ Then visit `/admin` after signing in.
 
 ## Payment Setup
 
-The payment layer is fully abstracted. Switch providers by changing `.env.local`:
+The payment layer uses an `IPaymentProvider` interface. **Stripe is the active provider.** Razorpay code exists but is intentionally disabled (no webhook handler — see `CLAUDE.md`).
 
-```env
-NEXT_PUBLIC_PAYMENT_PROVIDER=stripe   # or "razorpay"
-```
-
-**Stripe webhook (local):**
+**Stripe webhook (local):
 ```bash
 stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
@@ -195,9 +182,19 @@ npm run test:e2e
 
 ## Key Design Decisions
 
+- **Multi-country localization** — URL structure `/{country}/{lang}/{path}`. 8 countries, 7 languages, country-first business context (pricing/tax/shipping per country).
 - **Feature-based folder structure** — Each feature (products, orders, auth, cms) is self-contained with its own types, service, hooks, and components.
-- **Server + Client components** — Homepage and product detail pages are server-rendered for SEO; interactive parts (cart, filters) are client components.
-- **Payment abstraction** — `IPaymentProvider` interface makes swapping Stripe/Razorpay a single env var change.
-- **Zustand with persistence** — Cart and wishlist survive page refreshes via `persist` middleware.
-- **TanStack Query** — All data fetching goes through Query with proper cache keys; optimistic updates where applicable.
-- **RLS on every table** — Database access control is enforced at the Postgres level, not just in application code.
+- **Server + Client components** — Storefront pages are server-rendered for SEO; interactive parts (cart, filters) are client components.
+- **Server-authoritative cart** — Cart lives in Supabase DB; Zustand is a display cache only. Every mutation hits the server and returns fresh pricing.
+- **Stripe payments** — `IPaymentProvider` interface; Razorpay exists but is disabled pending webhook implementation.
+- **TanStack Query** — All data fetching goes through Query with proper cache keys.
+- **RLS on every table** — Database access control enforced at the PostgreSQL level, not just in application code.
+- **Atomic order creation** — Single PostgreSQL RPC (`create_order_atomic`) handles inventory, coupons, and order creation in one transaction.
+
+## Architecture Documentation
+
+See `docs/` for the full architecture knowledge system:
+- `docs/README.md` — Documentation index and reading order
+- `docs/architecture/SYSTEM_OVERVIEW.md` — Full system portrait
+- `docs/ADRs/` — Architecture Decision Records
+- `CLAUDE.md` — AI agent context and hardening status
