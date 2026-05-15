@@ -20,14 +20,6 @@ interface CitySearchSelectProps {
   disabled?: boolean;
 }
 
-/**
- * Async searchable city field.
- * - Debounced API search via /api/locations/cities
- * - Disabled until a region is selected
- * - Resets when region changes
- * - allowFreeText=true: user can type any value (used for countries with fewer DB cities)
- * - allowFreeText=false: user must pick from dropdown
- */
 export function CitySearchSelect({
   countryCode,
   regionCode,
@@ -54,7 +46,7 @@ export function CitySearchSelect({
     }
   }, [regionCode, onChange]);
 
-  // Sync controlled value
+  // Sync controlled value when not open
   React.useEffect(() => {
     if (value !== inputValue && !open) {
       setInputValue(value);
@@ -75,7 +67,6 @@ export function CitySearchSelect({
     function onMouseDown(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
-        // If free text not allowed and value doesn't match a city, clear it
         if (!allowFreeText && inputValue && !cities.some((c) => c.name === inputValue)) {
           setInputValue("");
           onChange("");
@@ -113,6 +104,7 @@ export function CitySearchSelect({
         {required && <span className="ml-1 text-destructive" aria-hidden="true">*</span>}
       </Label>
 
+      {/* relative wrapper keeps dropdown width == input width */}
       <div className="relative">
         <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
           {isFetching && regionCode ? (
@@ -121,6 +113,7 @@ export function CitySearchSelect({
             <Search className="h-3.5 w-3.5" />
           )}
         </div>
+
         <input
           id={id}
           type="text"
@@ -129,21 +122,17 @@ export function CitySearchSelect({
           onChange={handleInputChange}
           onFocus={() => regionCode && setOpen(true)}
           disabled={isDisabled}
-          placeholder={
-            !regionCode
-              ? "Select a state / province first"
-              : `Search ${label}…`
-          }
+          placeholder={!regionCode ? "Select a state / province first" : `Search ${label}…`}
           aria-required={required}
           aria-autocomplete="list"
           className={cn(
             "flex h-9 w-full rounded-md border bg-background py-1 pl-9 pr-8 text-sm shadow-sm transition-colors",
-            "placeholder:text-muted-foreground",
-            "focus:outline-none focus:ring-1 focus:ring-ring",
+            "placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring",
             "disabled:cursor-not-allowed disabled:opacity-50",
             error ? "border-destructive" : "border-input",
           )}
         />
+
         {inputValue && !isDisabled && (
           <button
             type="button"
@@ -154,38 +143,39 @@ export function CitySearchSelect({
             <X className="h-3.5 w-3.5" />
           </button>
         )}
-      </div>
 
-      {showDropdown && (
-        <ul
-          role="listbox"
-          className="absolute z-50 mt-0 max-h-52 w-full overflow-y-auto rounded-md border border-input bg-popover py-1 shadow-md"
-        >
-          {isFetching && cities.length === 0 ? (
-            <li className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Searching…
-            </li>
-          ) : cities.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-muted-foreground">No cities found.</li>
-          ) : (
-            cities.map((city) => (
-              <li
-                key={city.id}
-                role="option"
-                aria-selected={city.name === value}
-                onMouseDown={(e) => { e.preventDefault(); handleSelect(city.name); }}
-                className={cn(
-                  "cursor-pointer px-3 py-1.5 text-sm hover:bg-accent",
-                  city.name === value && "font-medium bg-accent/50",
-                )}
-              >
-                {city.name}
+        {/* Dropdown is inside relative wrapper — width matches input exactly */}
+        {showDropdown && (
+          <ul
+            role="listbox"
+            className="absolute left-0 top-full z-50 mt-1 max-h-52 w-full overflow-y-auto rounded-md border border-input bg-popover py-1 shadow-md"
+          >
+            {isFetching && cities.length === 0 ? (
+              <li className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Searching…
               </li>
-            ))
-          )}
-        </ul>
-      )}
+            ) : cities.length === 0 ? (
+              <li className="px-3 py-2 text-sm text-muted-foreground">No cities found.</li>
+            ) : (
+              cities.map((city) => (
+                <li
+                  key={city.id}
+                  role="option"
+                  aria-selected={city.name === value}
+                  onMouseDown={(e) => { e.preventDefault(); handleSelect(city.name); }}
+                  className={cn(
+                    "cursor-pointer px-3 py-1.5 text-sm hover:bg-accent",
+                    city.name === value && "font-medium bg-accent/50",
+                  )}
+                >
+                  {city.name}
+                </li>
+              ))
+            )}
+          </ul>
+        )}
+      </div>
 
       {error && (
         <p className="text-xs text-destructive" role="alert">{error}</p>

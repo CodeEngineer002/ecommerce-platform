@@ -10,6 +10,7 @@ import { useLocationRules } from "@/features/checkout/hooks/use-locations";
 import type { CheckoutFormData } from "@/lib/validators";
 import { CitySearchSelect } from "./city-search-select";
 import { CountryLockedField } from "./country-locked-field";
+import { PhoneField } from "./phone-field";
 import { PostalCodeField } from "./postal-code-field";
 import { RegionSelect } from "./region-select";
 
@@ -53,7 +54,6 @@ export function AddressSection({
   const postalLabel     = rules?.postal_code_label ?? "Postal Code";
   const postalExample   = rules?.postal_code_example ?? undefined;
   const allowFreeCity   = rules?.allows_free_text_city ?? true;
-  const phoneRequired   = rules?.phone_required ?? false;
   const stateRequired   = rules?.state_required ?? true;
   const cityRequired    = rules?.city_required ?? true;
   const postalRequired  = rules?.postal_code_required ?? true;
@@ -79,14 +79,6 @@ export function AddressSection({
           error={fieldError("full_name")}
           {...register(`${prefix}.full_name`)}
           className="sm:col-span-2"
-        />
-
-        {/* Phone */}
-        <FormField
-          label="Phone"
-          required={phoneRequired}
-          error={fieldError("phone")}
-          {...register(`${prefix}.phone`)}
         />
 
         {/* Address Line 1 */}
@@ -158,6 +150,23 @@ export function AddressSection({
         <CountryLockedField
           countryCode={countryCode}
           id={`${prefix}-country`}
+        />
+
+        {/* Phone — optional, with country flag + dial code, below country */}
+        <Controller
+          name={`${prefix}.phone`}
+          control={control}
+          render={({ field }) => (
+            <PhoneField
+              id={`${prefix}-phone`}
+              name={field.name}
+              countryCode={countryCode}
+              value={field.value ?? ""}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+              error={fieldError("phone")}
+            />
+          )}
         />
       </CardContent>
 

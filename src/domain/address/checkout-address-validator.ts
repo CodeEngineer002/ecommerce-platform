@@ -22,10 +22,10 @@ export interface CheckoutAddressInput {
   address_line2?: string | null;
   /** ISO alpha-2, must match active storefront country */
   country_code: string;
-  /** State/province/emirate code, e.g. "CA", "MH", "DU" */
-  region_code: string;
+  /** State/province/emirate code — optional for saved addresses without region_code */
+  region_code?: string | null;
   city: string;
-  postal_code: string;
+  postal_code?: string | null;
 }
 
 export interface CheckoutValidationResult {
@@ -68,7 +68,7 @@ export async function validateCheckoutAddress(
   // ── 2. Required base fields ────────────────────────────────────────────────
   if (!input.full_name?.trim()) addError("full_name", "Full name is required.");
   if (!input.address_line1?.trim()) addError("address_line1", "Address line 1 is required.");
-  if (!input.region_code?.trim()) addError("region_code", "State / Province is required.");
+  // region_code optional for saved addresses entered before location domain
   if (!input.city?.trim()) addError("city", "City is required.");
 
   // ── 3. Load country rules ──────────────────────────────────────────────────
@@ -106,9 +106,9 @@ export async function validateCheckoutAddress(
     return { is_valid: false, validation_errors: errors, warnings, confidence_score: 0 };
   }
 
-  // ── 4. Validate region belongs to country ─────────────────────────────────
-  let regionName = input.region_code;
-  if (input.region_code.trim()) {
+  // ── 4. Validate region belongs to country (only when region_code supplied) ─
+  let regionName = input.region_code?.trim() ?? "";
+  if (input.region_code?.trim()) {
     const regionValid = await isValidRegion(inputIso, input.region_code.trim());
     if (!regionValid) {
       addError(
@@ -120,13 +120,13 @@ export async function validateCheckoutAddress(
       const { getRegions } = await import("./location-service");
       const regions = await getRegions(inputIso);
       regionName =
-        regions.find((r) => r.code.toUpperCase() === input.region_code.toUpperCase())?.name ??
+        regions.find((r) => r.code.toUpperCase() === input.region_code!.toUpperCase())?.name ??
         input.region_code;
     }
   }
 
   // ── 5. Validate city belongs to region (when free text not allowed) ────────
-  if (!rules?.allows_free_text_city && input.city.trim() && input.region_code.trim()) {
+  if (!rules?.allows_free_text_city && input.city.trim() && input.region_code?.trim()) {
     const cityValid = await isValidCity(inputIso, input.region_code.trim(), input.city.trim());
     if (!cityValid) {
       // Warn rather than hard-error if DB city list might be incomplete
@@ -143,7 +143,7 @@ export async function validateCheckoutAddress(
 
   // ── 6. Build normalized result ─────────────────────────────────────────────
   const normalizedPostal = normalizePostalCode(
-    input.postal_code.trim(),
+    (input.postal_code ?? "").trim(),
     inputIso,
   );
 
@@ -155,7 +155,7 @@ export async function validateCheckoutAddress(
     normalized: {
       full_name: input.full_name.trim(),
       city: capitalize(input.city.trim()),
-      region_code: input.region_code.trim().toUpperCase(),
+      region_code: input.region_code?.trim().toUpperCase() ?? "",
       state: regionName,
       postal_code: normalizedPostal,
       country_code: inputIso,

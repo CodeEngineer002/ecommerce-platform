@@ -98,6 +98,15 @@ export type RegisterFormData = z.infer<typeof registerSchema>;
 export type ProductFormData = z.infer<typeof productSchema>;
 export type CategoryFormData = z.infer<typeof categorySchema>;
 export type CheckoutFormData = z.infer<typeof checkoutSchema>;
+
+/** Lightweight schema for the checkout page when addresses come from the address panel */
+export const checkoutExtrasSchema = z.object({
+  useSameAddress:  z.boolean().default(true),
+  couponCode:      z.string().optional(),
+  notes:           z.string().optional(),
+  paymentProvider: z.enum(["stripe", "razorpay", "cod"]),
+});
+export type CheckoutExtrasData = z.infer<typeof checkoutExtrasSchema>;
 export type ReviewFormData = z.infer<typeof reviewSchema>;
 export type CouponFormData = z.infer<typeof couponSchema>;
 export type ProfileUpdateFormData = z.infer<typeof profileUpdateSchema>;

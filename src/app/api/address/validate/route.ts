@@ -11,9 +11,9 @@ const validateRequestSchema = z.object({
   address_line1: z.string().min(1),
   address_line2: z.string().optional().nullable(),
   country_code:  z.string().length(2),
-  region_code:   z.string().min(1),
+  region_code:   z.string().optional().nullable(),
   city:          z.string().min(1),
-  postal_code:   z.string().min(1).max(12),
+  postal_code:   z.string().max(12).optional().nullable(),
 });
 
 /**
