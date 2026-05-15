@@ -87,12 +87,18 @@ export const ROUTES = {
     analytics:        "/admin/analytics",
     inventory:        "/admin/inventory",
     coupons:          "/admin/coupons",
-    // CMS sub-module routes
+    // CMS — country-first routes
     cms:              "/admin/cms",
-    cmsHomepage:      "/admin/cms/homepage",
-    cmsBlocks:        "/admin/cms/blocks",
-    cmsNavigation:    "/admin/cms/navigation",
-    cmsBanners:       "/admin/cms/banners",
-    cmsMedia:         "/admin/cms/media",
+    // Function helpers for country-first CMS navigation
+    cmsLocale: (country: string, lang: string) =>
+      `/admin/cms/${country}/${lang}`,
+    cmsModule: (country: string, lang: string, mod: string) =>
+      `/admin/cms/${country}/${lang}/${mod}`,
+    // Legacy aliases — redirect to country-first URLs
+    cmsHomepage:      "/admin/cms",
+    cmsBlocks:        "/admin/cms",
+    cmsNavigation:    "/admin/cms",
+    cmsBanners:       "/admin/cms",
+    cmsMedia:         "/admin/cms",
   },
 } as const;

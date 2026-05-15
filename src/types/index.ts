@@ -76,6 +76,7 @@ export interface ProductFilters {
   sortBy?: "price_asc" | "price_desc" | "newest" | "name_asc" | "rating";
   page?: number;
   pageSize?: number;
+  countryId?: string; // filter by country availability (empty array = all countries)
 }
 
 export interface AddressPayload {

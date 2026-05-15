@@ -23,16 +23,84 @@ function resolveLocaleIds(country: CountryCode, lang: LanguageCode): LocaleId[] 
   return ids;
 }
 
+// ── Inheritance resolution helper ────────────────────────────────────────────
+// Merges locale-level overrides with country-level source rows.
+// Locale overrides take priority; country rows fill in the rest.
+// Legacy rows (no scope_type) are returned as-is.
+async function resolveInherited<T extends { id: string; inherits_from_id?: string | null }>(
+  table: string,
+  countryIso: string,
+  localeId: string,
+  extraFilter?: (q: ReturnType<ReturnType<typeof createServiceClient>["from"]>) => ReturnType<ReturnType<typeof createServiceClient>["from"]>,
+): Promise<T[]> {
+  const supabase = createServiceClient();
+
+  const applyFilter = (q: ReturnType<ReturnType<typeof createServiceClient>["from"]>) =>
+    extraFilter ? extraFilter(q) : q;
+
+  // Locale overrides (explicitly overridden rows)
+  const { data: localeRows } = await applyFilter(
+    supabase.from(table).select("*")
+      .eq("locale_id", localeId)
+      .eq("scope_type", "locale")
+      .eq("override_status", "overridden")
+      .eq("is_active", true),
+  );
+
+  // Country-level source rows
+  const { data: countryRows } = await applyFilter(
+    supabase.from(table).select("*")
+      .eq("country_id", countryIso)
+      .eq("scope_type", "country")
+      .is("locale_id", null)
+      .eq("is_active", true),
+  );
+
+  // Legacy locale rows (pre-inheritance, no scope_type)
+  const { data: legacyRows } = await applyFilter(
+    supabase.from(table).select("*")
+      .eq("locale_id", localeId)
+      .is("scope_type", null)
+      .eq("is_active", true),
+  );
+
+  const overriddenSourceIds = new Set(
+    ((localeRows ?? []) as Array<{ inherits_from_id?: string | null }>)
+      .map((r) => r.inherits_from_id)
+      .filter(Boolean),
+  );
+
+  const inheritedCountryRows = (countryRows ?? []).filter(
+    (r: Record<string, unknown>) => !overriddenSourceIds.has(r.id as string),
+  );
+
+  return [
+    ...(localeRows ?? []),
+    ...inheritedCountryRows,
+    ...(legacyRows ?? []),
+  ] as T[];
+}
+
 // ── Localized homepage sections ───────────────────────────────────────────────
 
 export const getLocalizedHomepageSectionsServer = unstable_cache(
   async (country: CountryCode, lang: LanguageCode): Promise<LocalizedHomepageSection[]> => {
+    const localeId  = toLocaleId(country, lang);
+    const countryIso = COUNTRIES[country].iso.toLowerCase();
+
+    // Try inheritance-resolved content first
+    const resolved = await resolveInherited<LocalizedHomepageSection>(
+      "localized_homepage_sections", countryIso, localeId,
+    );
+    if (resolved.length > 0) return resolved.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+    // Fall back to locale fallback chain (legacy)
     const supabase = createServiceClient();
-    for (const localeId of resolveLocaleIds(country, lang)) {
+    for (const lid of resolveLocaleIds(country, lang)) {
       const { data } = await supabase
         .from("localized_homepage_sections")
         .select("*")
-        .eq("locale_id", localeId)
+        .eq("locale_id", lid)
         .eq("is_active", true)
         .order("sort_order", { ascending: true });
       if (data && data.length > 0) return data;

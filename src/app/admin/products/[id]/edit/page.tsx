@@ -5,12 +5,13 @@ import { ArrowLeft, Upload, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { use } from "react";
+import { use, useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { FormField } from "@/components/common/form-field";
 import { PageHeader } from "@/components/common/page-header";
 import { LoadingState } from "@/components/feedback/loading-state";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,6 +23,7 @@ import {
   useDeleteProductImage,
   useUploadProductImage,
 } from "@/features/admin/hooks/use-admin-products";
+import { useAllCountries } from "@/features/admin/hooks/use-country-management";
 import { useCategories } from "@/features/products/hooks/use-categories";
 import { ROUTES } from "@/lib/constants";
 import { productSchema, type ProductFormData } from "@/lib/validators";
@@ -35,10 +37,18 @@ export default function EditProductPage({ params }: Props) {
   const { id } = use(params);
   const router = useRouter();
   const { data: product, isLoading } = useAdminProduct(id);
-  const { data: categories = [] } = useCategories();
+  const { data: categoriesData = [] } = useCategories();
+  const categories = categoriesData;
+  const { data: allCountries = [] } = useAllCountries();
   const { mutate: updateProduct, isPending } = useAdminUpdateProduct();
   const { mutate: uploadImage, isPending: isUploading } = useUploadProductImage();
   const { mutate: deleteImage } = useDeleteProductImage();
+
+  // Country availability state (not part of react-hook-form to keep it simple)
+  const productAny = product as (typeof product & { available_country_ids?: string[] }) | undefined;
+  const [selectedCountryIds, setSelectedCountryIds] = useState<string[]>(
+    productAny?.available_country_ids ?? []
+  );
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -68,7 +78,11 @@ export default function EditProductPage({ params }: Props) {
     (product as typeof product & { images?: ProductImage[] }).images ?? [];
 
   const onSubmit = (data: ProductFormData) => {
-    updateProduct({ id, data }, { onSuccess: () => router.push(ROUTES.admin.products) });
+    updateProduct(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id, data: { ...data, available_country_ids: selectedCountryIds } as any },
+      { onSuccess: () => router.push(ROUTES.admin.products) }
+    );
   };
 
   return (
@@ -241,6 +255,51 @@ export default function EditProductPage({ params }: Props) {
                   error={errors.seo_desc}
                   {...register("seo_desc")}
                 />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Country Availability</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Select countries where this product is available.
+                  <strong className="text-foreground"> Leave all unchecked = available in all countries.</strong>
+                </p>
+                {selectedCountryIds.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-1">
+                    {selectedCountryIds.map((cid) => {
+                      const c = allCountries.find((x) => x.id === cid);
+                      return (
+                        <Badge key={cid} variant="secondary" className="text-xs">
+                          {c?.name ?? cid}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  {allCountries.map((country) => {
+                    const checked = selectedCountryIds.includes(country.id);
+                    return (
+                      <label
+                        key={country.id}
+                        className="flex cursor-pointer items-center gap-2 rounded-md border p-2 hover:bg-muted/50"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            setSelectedCountryIds((prev) =>
+                              v ? [...prev, country.id] : prev.filter((x) => x !== country.id)
+                            );
+                          }}
+                        />
+                        <span className="text-sm">{country.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </CardContent>
             </Card>
 

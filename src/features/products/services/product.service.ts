@@ -23,12 +23,22 @@ export async function getProducts(
     page = 1,
     pageSize = 12,
     tags,
+    countryId,
   } = filters;
 
   let query = supabase
     .from("products")
     .select(PRODUCT_SELECT, { count: "exact" })
     .eq("is_active", true);
+
+  // Country filtering:
+  // available_country_ids = '{}' means "all countries" (no restriction)
+  // available_country_ids = '{in,de}' means only those countries
+  if (countryId) {
+    query = query.or(
+      `available_country_ids.eq.{},available_country_ids.cs.{${countryId}}`
+    );
+  }
 
   // Resolve category slug → id with a join instead of a separate round-trip
   if (category) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState } from "react";
 
 import { Pagination } from "@/components/common/pagination";
@@ -16,6 +16,8 @@ import type { ProductFilters } from "@/types";
 
 function ProductsPageContent() {
   const searchParams = useSearchParams();
+  const params = useParams<{ country?: string }>();
+  const countryId = params.country ?? undefined;
   const { data: categories = [] } = useCategories();
 
   const [filters, setFilters] = useState<ProductFilters>({
@@ -24,6 +26,7 @@ function ProductsPageContent() {
     search: searchParams.get("q") ?? undefined,
     page: 1,
     pageSize: 12,
+    countryId,
   });
 
   const { data, isLoading } = useProducts(filters);

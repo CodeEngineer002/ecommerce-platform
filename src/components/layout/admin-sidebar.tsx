@@ -4,8 +4,6 @@ import {
   BarChart3,
   ChevronDown,
   FileText,
-  Globe,
-  Image,
   LayoutDashboard,
   LayoutTemplate,
   Megaphone,
@@ -75,39 +73,9 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: ROUTES.admin.cms,
-        label: "Pages",
-        icon: FileText,
-        permission: PERMISSIONS.CMS_EDIT,
-      },
-      {
-        href: ROUTES.admin.cmsHomepage,
-        label: "Homepage",
+        label: "CMS",
         icon: LayoutTemplate,
         permission: PERMISSIONS.CMS_EDIT,
-      },
-      {
-        href: ROUTES.admin.cmsNavigation,
-        label: "Navigation",
-        icon: Menu,
-        permission: PERMISSIONS.CMS_MANAGE_NAVIGATION,
-      },
-      {
-        href: ROUTES.admin.cmsBanners,
-        label: "Banners",
-        icon: Megaphone,
-        permission: PERMISSIONS.CMS_MANAGE_BANNERS,
-      },
-      {
-        href: ROUTES.admin.cmsBlocks,
-        label: "Blocks",
-        icon: Globe,
-        permission: PERMISSIONS.CMS_EDIT,
-      },
-      {
-        href: ROUTES.admin.cmsMedia,
-        label: "Media",
-        icon: Image,
-        permission: PERMISSIONS.CMS_MANAGE_MEDIA,
       },
     ],
   },
@@ -202,7 +170,7 @@ export function AdminSidebar({ title }: AdminSidebarProps) {
                 {(!isGroupCollapsed || hasActiveChild) && (
                   <ul className="space-y-0.5" role="list">
                     {visibleItems.map((item) => (
-                      <li key={item.href}>
+                      <li key={item.label}>
                         <NavLink
                           href={item.href}
                           label={item.label}
