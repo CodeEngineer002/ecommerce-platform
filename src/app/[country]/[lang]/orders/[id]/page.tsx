@@ -6,7 +6,6 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { getOrderById } from "@/features/orders/services/order.service";
 import { isValidCountry, isValidLanguage, type CountryCode, type LanguageCode } from "@/lib/i18n/config";
 import { buildLocaleRoutes, type LocaleParams } from "@/lib/i18n/routing";
 import { createClient } from "@/lib/supabase/server";
@@ -23,8 +22,23 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const order = await getOrderById(id);
-  if (!order || order.user_id !== user.id) notFound();
+  // Query using the authenticated server client (respects RLS session)
+  const { data: orderRaw } = await supabase
+    .from("orders")
+    .select("*, items:order_items(*), payments(*)")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (!orderRaw) notFound();
+
+  // payments(*) returns an array — extract first record
+  type PaymentRow = { id: string; provider: string; status: string; amount: number };
+  const paymentsArr = (orderRaw as unknown as { payments: PaymentRow[] }).payments ?? [];
+  const order = {
+    ...(orderRaw as unknown as Record<string, unknown>),
+    payment: paymentsArr[0] ?? null,
+  } as typeof orderRaw & { payment: PaymentRow | null };
 
   const localeParams: LocaleParams = isValidCountry(country) && isValidLanguage(lang)
     ? { country: country as CountryCode, lang: lang as LanguageCode }
@@ -44,7 +58,10 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold">Order #{order.order_number}</h1>
-          <p className="text-sm text-muted-foreground">{formatDate(order.created_at)}</p>
+          <p className="text-sm text-muted-foreground">
+            {formatDate(order.created_at)} at{" "}
+            {new Date(order.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+          </p>
         </div>
         <StatusBadge status={order.status} />
       </div>
@@ -121,9 +138,29 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
             {order.payment && (
               <>
                 <Separator />
-                <p className="text-xs text-muted-foreground capitalize">
-                  Payment: {order.payment.provider} • {order.payment.status}
-                </p>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Payment Mode</span>
+                    <span className="font-medium">
+                      {order.payment.provider === "cod"
+                        ? "Cash on Delivery"
+                        : order.payment.provider === "stripe"
+                          ? "Credit / Debit Card"
+                          : order.payment.provider === "razorpay"
+                            ? "Razorpay (UPI / Cards)"
+                            : order.payment.provider}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Payment Status</span>
+                    <span className={`capitalize font-medium ${
+                      order.payment.status === "succeeded" ? "text-green-600" :
+                      order.payment.status === "pending" ? "text-amber-600" : "text-destructive"
+                    }`}>
+                      {order.payment.status === "succeeded" ? "Paid" : order.payment.status}
+                    </span>
+                  </div>
+                </div>
               </>
             )}
           </CardContent>

@@ -175,7 +175,7 @@ export default function CheckoutPage() {
         address_line2: addr.address_line2 ?? undefined,
         city:          addr.city,
         state:         addr.state,
-        region_code:   "",
+        region_code:   addr.state ?? "",
         postal_code:   addr.postal_code,
         country:       addr.country_code,
       };

@@ -40,12 +40,16 @@ export function useOrder(orderId: string) {
 export function useCreateOrder() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { clearCart } = useCartStore();
+  const { clearCart, setServerCart } = useCartStore();
 
   return useMutation({
     mutationFn: (payload: CheckoutPayload) => createOrder(payload),
     onSuccess: (orderId) => {
+      // Clear Zustand immediately so UI shows empty cart
       clearCart();
+      setServerCart(null);
+      // Remove cached cart data so next fetch is fresh
+      queryClient.removeQueries({ queryKey: queryKeys.cart.session });
       queryClient.invalidateQueries({ queryKey: orderKeys.all });
       router.push(ROUTES.orderSuccess(orderId));
     },

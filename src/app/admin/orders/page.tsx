@@ -14,6 +14,32 @@ import { ORDER_STATUSES } from "@/lib/constants";
 import { formatDate, formatPrice } from "@/lib/utils";
 import type { OrderStatus, OrderWithItems } from "@/types";
 
+/** Valid next statuses for each current status — mirrors DB update_order_status logic */
+const ALLOWED_TRANSITIONS: Record<string, OrderStatus[]> = {
+  draft:                   ["pending", "pending_payment", "cancelled"],
+  pending:                 ["confirmed", "pending_payment", "cancelled"],
+  pending_payment:         ["confirmed", "cancelled", "failed"],
+  confirmed:               ["processing", "cancelled"],
+  processing:              ["packed", "shipped", "cancelled"],
+  packed:                  ["shipped", "cancelled"],
+  shipped:                 ["out_for_delivery", "delivered", "cancelled"],
+  out_for_delivery:        ["delivered"],
+  delivered:               ["return_requested", "replacement_requested", "refund_requested"],
+  return_requested:        ["return_approved", "return_rejected"],
+  return_approved:         ["return_in_transit"],
+  return_in_transit:       ["returned"],
+  returned:                ["refunded", "replacement_shipped"],
+  replacement_requested:   ["replacement_approved", "replacement_rejected"],
+  replacement_approved:    ["replacement_shipped"],
+  replacement_shipped:     ["replacement_delivered"],
+  refund_requested:        ["refund_processing"],
+  refund_processing:       ["refunded", "partially_refunded"],
+  partially_returned:      ["return_requested", "refunded", "partially_refunded"],
+  partially_refunded:      ["refunded"],
+  cancelled:               ["refunded"],
+  failed:                  ["pending_payment"],
+};
+
 const columns = (
   onStatusChange: (orderId: string, status: OrderStatus) => void,
 ): ColumnDef<OrderWithItems>[] => [
@@ -45,23 +71,26 @@ const columns = (
   {
     header: "Update Status",
     align: "center",
-    cell: (o) => (
-      <Select
-        defaultValue={o.status}
-        onValueChange={(v) => onStatusChange(o.id, v as OrderStatus)}
-      >
-        <SelectTrigger className="h-8 w-36">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {Object.entries(ORDER_STATUSES).map(([value, { label }]) => (
-            <SelectItem key={value} value={value}>
-              {label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    ),
+    cell: (o) => {
+      const nextStatuses = ALLOWED_TRANSITIONS[o.status] ?? [];
+      if (nextStatuses.length === 0) {
+        return <span className="text-xs text-muted-foreground">—</span>;
+      }
+      return (
+        <Select onValueChange={(v) => onStatusChange(o.id, v as OrderStatus)}>
+          <SelectTrigger className="h-8 w-40">
+            <SelectValue placeholder="Move to…" />
+          </SelectTrigger>
+          <SelectContent>
+            {nextStatuses.map((value) => (
+              <SelectItem key={value} value={value}>
+                {ORDER_STATUSES[value]?.label ?? value}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    },
   },
 ];
 

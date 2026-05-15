@@ -6,7 +6,6 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getOrders } from "@/features/orders/services/order.service";
 import { isValidCountry, isValidLanguage, type CountryCode, type LanguageCode } from "@/lib/i18n/config";
 import { buildLocaleRoutes, type LocaleParams } from "@/lib/i18n/routing";
 import { createClient } from "@/lib/supabase/server";
@@ -28,7 +27,12 @@ export default async function LocaleOrdersPage({ params }: Props) {
     : { country: "in", lang: "en" };
   const routes = buildLocaleRoutes(localeParams);
 
-  const orders = await getOrders(user.id);
+  const { data: ordersData } = await supabase
+    .from("orders")
+    .select("*, items:order_items(*), payments(*)")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+  const orders = ordersData ?? [];
 
   return (
     <div className="container py-8">

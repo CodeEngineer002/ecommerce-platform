@@ -140,7 +140,7 @@ export const POST = withRateLimit(
     p_shipping: pricing.shipping,
     p_discount: pricing.discount,
     p_total: pricing.total,
-    p_coupon_id: couponData?.id ?? "",
+    p_coupon_id: couponData?.id ?? null,
     p_coupon_code: couponCode?.toUpperCase() ?? "",
     p_shipping_address: shippingAddress,
     p_billing_address: billingAddress ?? shippingAddress,
@@ -159,6 +159,30 @@ export const POST = withRateLimit(
       throw new CouponError("You have already used this coupon");
     }
     throw new Error(msg || "Failed to create order");
+  }
+
+  // ── Convert the user's active cart ────────────────────────────────────────
+  // 1. Find the active cart ID
+  const { data: activeCart } = await db
+    .from("carts")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (activeCart) {
+    // 2. Delete all items (belt-and-suspenders — ensures cart appears empty even on race)
+    await db.from("cart_items").delete().eq("cart_id", activeCart.id);
+    // 3. Mark cart as converted by explicit ID (avoids user_id match issues)
+    const { error: cartConvertError } = await db
+      .from("carts")
+      .update({ status: "converted" })
+      .eq("id", activeCart.id);
+    if (cartConvertError) {
+      console.error("[orders/create] cart conversion failed:", cartConvertError.message);
+    }
   }
 
   // ── Create payment record ─────────────────────────────────────────────────
