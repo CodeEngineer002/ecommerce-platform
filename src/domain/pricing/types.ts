@@ -31,7 +31,8 @@ export interface ShippingConfig {
 }
 
 export interface TaxConfig {
-  rate: number; // 0.18 = 18%
+  rate: number;    // 0.18 = 18%
+  label?: string;  // 'GST', 'VAT', 'MwSt.', 'TVA' — omit for tests/defaults
 }
 
 // ── Pricing engine output ─────────────────────────────────────────────────────
@@ -40,6 +41,8 @@ export interface PriceBreakdown {
   discount: number;
   taxableAmount: number;
   tax: number;
+  taxRate: number;   // e.g. 0.19 — authoritative rate used for this order
+  taxLabel: string;  // e.g. 'GST', 'VAT', 'MwSt.' — for display and invoices
   shipping: number;
   total: number;
 }

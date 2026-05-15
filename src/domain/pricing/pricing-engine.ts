@@ -7,11 +7,14 @@ const DEFAULT_SHIPPING: ShippingConfig = {
   flatRate: SHIPPING_COST,
 };
 
-const DEFAULT_TAX: TaxConfig = { rate: TAX_RATE };
+const DEFAULT_TAX: TaxConfig = { rate: TAX_RATE, label: "Tax" };
 
 /**
  * Pure pricing calculation — no side effects, no DB access.
  * The source of truth for all price math in checkout and order creation.
+ *
+ * Pass a TaxConfig obtained from getTaxConfig(countryCode) so the correct
+ * statutory rate is applied per country (19% DE, 18% IN, 5% AE, etc.)
  */
 export function calculatePricing(
   items: LineItem[],
@@ -27,7 +30,16 @@ export function calculatePricing(
   const shippingAmount = subtotal >= shipping.freeThreshold ? 0 : shipping.flatRate;
   const total = Math.max(0, taxableAmount + taxAmount + shippingAmount);
 
-  return { subtotal, discount, taxableAmount, tax: taxAmount, shipping: shippingAmount, total };
+  return {
+    subtotal,
+    discount,
+    taxableAmount,
+    tax: taxAmount,
+    taxRate: tax.rate,
+    taxLabel: tax.label ?? "Tax",
+    shipping: shippingAmount,
+    total,
+  };
 }
 
 /**

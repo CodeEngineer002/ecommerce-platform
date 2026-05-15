@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 import { apiSuccess, withApiHandler } from "@/lib/api";
-import { AuthError, ForbiddenError, NotFoundError, OrderStateError } from "@/lib/errors";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { PERMISSIONS } from "@/lib/admin/permissions";
+import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
+import { NotFoundError, OrderStateError } from "@/lib/errors";
 
 const schema = z.object({
   status: z.enum([
@@ -38,23 +39,8 @@ const schema = z.object({
 
 export const PATCH = withApiHandler(
   async (request: Request, context: { params: Promise<{ id: string }> }) => {
-    const userClient = await createClient();
-    const {
-      data: { user },
-    } = await userClient.auth.getUser();
-    if (!user) throw new AuthError();
-
-    const db = createServiceClient();
-
-    const { data: profile } = await db
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
-      throw new ForbiddenError();
-    }
+    const ctx = await requireAdminPermission(PERMISSIONS.ORDERS_MANAGE);
+    const { user, db } = ctx;
 
     const { id } = await context.params;
     const { status, reason } = schema.parse(await request.json());
@@ -76,6 +62,13 @@ export const PATCH = withApiHandler(
       }
       throw new Error(msg || "Failed to update order status");
     }
+
+    await logAdminAction(ctx, request, {
+      action: "update_order_status",
+      entityType: "order",
+      entityId: id,
+      metadata: { status, reason },
+    });
 
     return apiSuccess({ success: true });
   },

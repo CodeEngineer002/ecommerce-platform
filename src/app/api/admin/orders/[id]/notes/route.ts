@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
-import { AuthError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { PERMISSIONS } from "@/lib/admin/permissions";
+import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
+import { NotFoundError } from "@/lib/errors";
 
 const createNoteSchema = z.object({
   content:     z.string().min(1).max(2000),
@@ -12,23 +13,7 @@ const createNoteSchema = z.object({
 // GET /api/admin/orders/[id]/notes
 export const GET = withApiHandler(
   async (_request: Request, context: { params: Promise<{ id: string }> }) => {
-    const userClient = await createClient();
-    const {
-      data: { user },
-    } = await userClient.auth.getUser();
-    if (!user) throw new AuthError();
-
-    const db = createServiceClient();
-
-    const { data: profile } = await db
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
-      throw new ForbiddenError();
-    }
+    const { db } = await requireAdminPermission(PERMISSIONS.ORDERS_READ);
 
     const { id: orderId } = await context.params;
 
@@ -47,23 +32,8 @@ export const GET = withApiHandler(
 // POST /api/admin/orders/[id]/notes
 export const POST = withApiHandler(
   async (request: Request, context: { params: Promise<{ id: string }> }) => {
-    const userClient = await createClient();
-    const {
-      data: { user },
-    } = await userClient.auth.getUser();
-    if (!user) throw new AuthError();
-
-    const db = createServiceClient();
-
-    const { data: profile } = await db
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
-      throw new ForbiddenError();
-    }
+    const ctx = await requireAdminPermission(PERMISSIONS.ORDERS_MANAGE);
+    const { user, db } = ctx;
 
     const { id: orderId } = await context.params;
 
@@ -111,6 +81,13 @@ export const POST = withApiHandler(
         metadata:    { note_id: note.id },
       });
     }
+
+    await logAdminAction(ctx, request, {
+      action: "add_order_note",
+      entityType: "order",
+      entityId: orderId,
+      metadata: { noteId: note.id, isInternal: parsed.data.is_internal },
+    });
 
     return apiSuccess(note, 201);
   },

@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
-import { AuthError, ForbiddenError, FulfillmentError, NotFoundError } from "@/lib/errors";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { PERMISSIONS } from "@/lib/admin/permissions";
+import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
+import { FulfillmentError, NotFoundError } from "@/lib/errors";
 
 const createFulfillmentSchema = z.object({
   carrier:             z.string().max(100).optional(),
@@ -24,23 +25,8 @@ const updateFulfillmentSchema = z.object({
 // POST /api/admin/orders/[id]/fulfillment — create fulfillment
 export const POST = withApiHandler(
   async (request: Request, context: { params: Promise<{ id: string }> }) => {
-    const userClient = await createClient();
-    const {
-      data: { user },
-    } = await userClient.auth.getUser();
-    if (!user) throw new AuthError();
-
-    const db = createServiceClient();
-
-    const { data: profile } = await db
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
-      throw new ForbiddenError();
-    }
+    const ctx = await requireAdminPermission(PERMISSIONS.ORDERS_MANAGE);
+    const { user, db } = ctx;
 
     const { id: orderId } = await context.params;
 
@@ -58,13 +44,13 @@ export const POST = withApiHandler(
     const { carrier, tracking_number, tracking_url, estimated_delivery, notes } = parsed.data;
 
     const { data: fulfillmentId, error } = await db.rpc("create_fulfillment", {
-      p_order_id:          orderId,
-      p_admin_id:          user.id,
-      p_carrier:           carrier ?? null,
-      p_tracking_number:   tracking_number ?? null,
-      p_tracking_url:      tracking_url ?? null,
-      p_estimated_delivery: estimated_delivery ?? null,
-      p_notes:             notes ?? null,
+      p_order_id:           orderId,
+      p_admin_id:           user.id,
+      p_carrier:            carrier ?? undefined,
+      p_tracking_number:    tracking_number ?? undefined,
+      p_tracking_url:       tracking_url ?? undefined,
+      p_estimated_delivery: estimated_delivery ?? undefined,
+      p_notes:              notes ?? undefined,
     });
 
     if (error) {
@@ -78,6 +64,13 @@ export const POST = withApiHandler(
       throw new Error(msg || "Failed to create fulfillment");
     }
 
+    await logAdminAction(ctx, request, {
+      action: "create_fulfillment",
+      entityType: "order",
+      entityId: orderId,
+      metadata: { fulfillmentId, carrier, tracking_number },
+    });
+
     return apiSuccess({ fulfillmentId }, 201);
   },
 );
@@ -85,23 +78,8 @@ export const POST = withApiHandler(
 // PATCH /api/admin/orders/[id]/fulfillment — update tracking
 export const PATCH = withApiHandler(
   async (request: Request, context: { params: Promise<{ id: string }> }) => {
-    const userClient = await createClient();
-    const {
-      data: { user },
-    } = await userClient.auth.getUser();
-    if (!user) throw new AuthError();
-
-    const db = createServiceClient();
-
-    const { data: profile } = await db
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
-      throw new ForbiddenError();
-    }
+    const ctx = await requireAdminPermission(PERMISSIONS.ORDERS_MANAGE);
+    const { user, db } = ctx;
 
     const body: unknown = await request.json();
     const parsed = updateFulfillmentSchema.safeParse(body);
@@ -126,11 +104,11 @@ export const PATCH = withApiHandler(
     const { error } = await db.rpc("update_fulfillment_tracking", {
       p_fulfillment_id:     fulfillment_id,
       p_admin_id:           user.id,
-      p_carrier:            carrier ?? null,
-      p_tracking_number:    tracking_number ?? null,
-      p_tracking_url:       tracking_url ?? null,
-      p_status:             status ?? null,
-      p_estimated_delivery: estimated_delivery ?? null,
+      p_carrier:            carrier ?? undefined,
+      p_tracking_number:    tracking_number ?? undefined,
+      p_tracking_url:       tracking_url ?? undefined,
+      p_status:             status ?? undefined,
+      p_estimated_delivery: estimated_delivery ?? undefined,
     });
 
     if (error) {
@@ -141,6 +119,13 @@ export const PATCH = withApiHandler(
       throw new Error(msg || "Failed to update fulfillment");
     }
 
+    await logAdminAction(ctx, request, {
+      action: "update_fulfillment",
+      entityType: "fulfillment",
+      entityId: fulfillment_id,
+      metadata: { carrier, tracking_number, status },
+    });
+
     return apiSuccess({ success: true });
   },
 );
@@ -148,23 +133,7 @@ export const PATCH = withApiHandler(
 // GET /api/admin/orders/[id]/fulfillment — list fulfillments for order
 export const GET = withApiHandler(
   async (_request: Request, context: { params: Promise<{ id: string }> }) => {
-    const userClient = await createClient();
-    const {
-      data: { user },
-    } = await userClient.auth.getUser();
-    if (!user) throw new AuthError();
-
-    const db = createServiceClient();
-
-    const { data: profile } = await db
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
-      throw new ForbiddenError();
-    }
+    const { db } = await requireAdminPermission(PERMISSIONS.ORDERS_READ);
 
     const { id: orderId } = await context.params;
 

@@ -17,7 +17,7 @@ export interface StockCheckResult {
 
 /**
  * Pre-flight stock check — reads current availability without locking rows.
- * This is a fast guard for early validation (before building the full order).
+ * Aggregates across all active warehouses for each variant.
  * The hard lock happens inside create_order_atomic to prevent race conditions.
  */
 export async function checkStock(items: StockCheckItem[]): Promise<StockCheckResult[]> {
@@ -25,17 +25,32 @@ export async function checkStock(items: StockCheckItem[]): Promise<StockCheckRes
   const variantIds = items.map((i) => i.variantId);
 
   const { data, error } = await db
-    .from("inventory")
-    .select("variant_id, quantity, reserved")
+    .from("inventory_levels")
+    .select("variant_id, quantity, reserved, warehouse:warehouses!inner(is_active)")
     .in("variant_id", variantIds);
 
   if (error) throw error;
 
+  // Aggregate available stock across all active warehouses per variant
+  const available = new Map<string, number>();
+  for (const row of data ?? []) {
+    const wh = Array.isArray(row.warehouse) ? row.warehouse[0] : row.warehouse;
+    if (!wh?.is_active) continue;
+    const current = available.get(row.variant_id) ?? 0;
+    available.set(row.variant_id, current + (row.quantity - row.reserved));
+  }
+
   return items.map((item) => {
-    const inv = data?.find((r) => r.variant_id === item.variantId);
-    if (!inv) throw new NotFoundError(`Inventory not found for variant ${item.variantId}`);
-    const available = inv.quantity - inv.reserved;
-    return { variantId: item.variantId, available, requested: item.quantity, sufficient: available >= item.quantity };
+    const qty = available.get(item.variantId);
+    if (qty === undefined) {
+      throw new NotFoundError(`Inventory not found for variant ${item.variantId}`);
+    }
+    return {
+      variantId: item.variantId,
+      available: qty,
+      requested: item.quantity,
+      sufficient: qty >= item.quantity,
+    };
   });
 }
 

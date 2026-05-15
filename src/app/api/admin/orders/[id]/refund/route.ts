@@ -2,10 +2,11 @@ import { z } from "zod";
 
 import { calculateRefund } from "@/domain/order/refund-calculator";
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
+import { PERMISSIONS } from "@/lib/admin/permissions";
+import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
 import { CURRENCY } from "@/lib/constants";
-import { AuthError, ForbiddenError, NotFoundError, RefundNotAllowedError } from "@/lib/errors";
+import { NotFoundError, RefundNotAllowedError } from "@/lib/errors";
 import { getPaymentProvider } from "@/lib/payment";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
 
 const refundItemSchema = z.object({
   order_item_id: z.string().uuid(),
@@ -22,23 +23,8 @@ const schema = z.object({
 // POST /api/admin/orders/[id]/refund
 export const POST = withApiHandler(
   async (request: Request, context: { params: Promise<{ id: string }> }) => {
-    const userClient = await createClient();
-    const {
-      data: { user },
-    } = await userClient.auth.getUser();
-    if (!user) throw new AuthError();
-
-    const db = createServiceClient();
-
-    const { data: profile } = await db
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
-      throw new ForbiddenError();
-    }
+    const ctx = await requireAdminPermission(PERMISSIONS.ORDERS_MANAGE);
+    const { user, db } = ctx;
 
     const { id: orderId } = await context.params;
 
@@ -155,8 +141,8 @@ export const POST = withApiHandler(
       p_refund_type:        calculation.refundType,
       p_admin_id:           user.id,
       p_reason:             reason,
-      p_return_id:          return_id ?? null,
-      p_provider_refund_id: null,
+      p_return_id:          return_id ?? undefined,
+      p_provider_refund_id: undefined,
     });
 
     if (rpcError || !refundId) {
@@ -174,6 +160,19 @@ export const POST = withApiHandler(
         })),
       );
     }
+
+    await logAdminAction(ctx, request, {
+      action: "process_refund",
+      entityType: "order",
+      entityId: orderId,
+      metadata: {
+        refundId,
+        amount: calculation.totalRefund,
+        refundType: calculation.refundType,
+        reason,
+        returnId: return_id ?? null,
+      },
+    });
 
     return apiSuccess({
       refundId,

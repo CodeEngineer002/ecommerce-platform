@@ -19,10 +19,9 @@ export interface InventoryMovementInput {
 }
 
 /**
- * Records a single inventory movement.
- * Prefer the DB-level record_inventory_movement function for movements that happen
- * inside transactions (e.g. order creation). Use this service for standalone
- * movements (admin adjustments, manual corrections).
+ * Records a single inventory movement audit entry.
+ * Use this for standalone movements (admin adjustments, manual corrections).
+ * For movements inside order transactions use create_order_atomic directly.
  */
 export async function recordInventoryMovement(input: InventoryMovementInput): Promise<void> {
   const db = createServiceClient();
@@ -42,11 +41,11 @@ export async function recordInventoryMovement(input: InventoryMovementInput): Pr
 }
 
 /**
- * Adjusts inventory for a variant with a full audit trail.
- * Used for admin stock corrections.
+ * Adjusts inventory for a variant in the default warehouse with a full audit trail.
+ * Used for admin stock corrections (purchase receipts, manual adjustments, write-offs).
  *
- * Safety: newQty is clamped to 0 minimum (stock can never go negative).
- * For reductions, the delta is clamped so reserved stock is preserved.
+ * Safety: newQty is clamped to 0 minimum. Reductions are clamped so reserved
+ * stock (committed to pending orders) is never removed.
  */
 export async function adjustInventory(
   variantId: string,
@@ -56,11 +55,23 @@ export async function adjustInventory(
 ): Promise<void> {
   const db = createServiceClient();
 
+  // Resolve default warehouse
+  const { data: wh } = await db
+    .from("warehouses")
+    .select("id")
+    .eq("is_default", true)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (!wh) throw new Error("No default warehouse configured");
+
   const { data: inv } = await db
-    .from("inventory")
+    .from("inventory_levels")
     .select("quantity, reserved")
     .eq("variant_id", variantId)
-    .single();
+    .eq("warehouse_id", wh.id)
+    .maybeSingle();
 
   if (!inv) return;
 
@@ -71,7 +82,11 @@ export async function adjustInventory(
   const newQty = Math.max(minQty, inv.quantity + delta);
   const effectiveDelta = newQty - previousQty;
 
-  await db.from("inventory").update({ quantity: newQty }).eq("variant_id", variantId);
+  await db
+    .from("inventory_levels")
+    .update({ quantity: newQty })
+    .eq("variant_id", variantId)
+    .eq("warehouse_id", wh.id);
 
   await recordInventoryMovement({
     variantId,

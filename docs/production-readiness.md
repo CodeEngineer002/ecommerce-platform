@@ -34,14 +34,19 @@ This document describes the production-readiness profile of the ShopNest ecommer
 - ✅ Application-level permission checks via `PERMISSIONS` constants
 - ✅ Admin context reads permissions from DB on each session load
 - ✅ CMS publish/edit/preview are separate permission codes
+- ✅ `requireAdminPermission(permission)` — all admin API routes enforced with fine-grained RBAC (Step 4)
+- ✅ `logAdminAction()` — every admin mutation writes to `admin_action_logs` with actor, IP, user-agent (Step 4)
+- ✅ `super_admin` bypasses fine-grained check; legacy admins (no user_roles entries) get allow-all during RBAC migration
 
 ### API Security
 - ✅ `withApiHandler` — consistent error handling, no raw error leakage
 - ✅ Zod validation on all API request bodies
 - ✅ Stripe webhook signature verification (`stripe.webhooks.constructEvent`)
-- ✅ Webhook idempotency via `idempotency_keys` table
+- ✅ Webhook idempotency via `idempotency_keys` table — `Idempotency-Key` header checked on order creation (Step 1)
 - ✅ Server-side price authority — client-submitted prices ignored
 - ✅ Coupon validation happens server-side only
+- ✅ Per-country tax via `getTaxConfig(countryCode)` — never hardcoded (Step 3)
+- ✅ Razorpay intentionally disabled until webhook handler is implemented (Step 1)
 
 ### Sensitive Data
 - ✅ No sensitive env vars in client bundle (`NEXT_PUBLIC_*` only for public config)
@@ -70,6 +75,10 @@ This document describes the production-readiness profile of the ShopNest ecommer
 - [ ] Sentry for error tracking (add `@sentry/nextjs`)
 - [ ] Datadog APM for request tracing
 - [ ] Supabase audit log table for RLS-level events
+
+### Scheduled Jobs (pg_cron) — Live
+- ✅ `shopnest:expire-abandoned-carts` — hourly, marks carts as `expired` when `expires_at` passes (Step 5)
+- ✅ `shopnest:cancel-unpaid-orders` — every 10 min, cancels `pending_payment` orders > 30 min and `pending` orders > 24 hours, releases inventory (Step 5)
 
 ---
 
@@ -118,6 +127,9 @@ Located in `src/tests/factories/index.ts`:
 - All frequently-queried columns indexed (see `00004_missing_functions_and_indexes.sql`)
 - RLS policies designed to not cause recursive joins (see `00003_fix_rls_recursion.sql`)
 - `create_order_atomic` DB function for transactional order creation
+- ✅ `inventory_levels` is single source of truth — legacy `inventory` table no longer written to (Step 1, migration 00017)
+- ✅ `release_inventory_reservation()` — releases stock on order cancel/fail, called automatically by `update_order_status` (Step 1)
+- ✅ `update_order_status` — full 20+ transition state machine with inventory release wired in (Step 5, migration 00018)
 
 ---
 
@@ -183,12 +195,19 @@ NEXT_PUBLIC_APP_NAME=ShopNest
 
 ## Known Limitations / Future Work
 
-| Item | Priority | Notes |
-|------|----------|-------|
-| CSP headers | High | Add via `next.config.ts` headers() |
-| Rate limiting | High | Upstash Redis on `/api/*` routes |
-| Redis caching | Medium | Replace in-memory for CMS delivery cache |
-| Search engine | Medium | Algolia/Meilisearch abstraction layer |
-| Real-time inventory | Medium | Supabase Realtime for stock updates |
-| Audit log table | Low | Persist audit events to DB for compliance |
-| Multi-vendor marketplace | Future | Domain extension point defined |
+| Item | Priority | Status | Notes |
+|------|----------|--------|-------|
+| Inventory unification | Critical | ✅ Done | migration 00017 — inventory_levels is single source of truth |
+| Order idempotency | Critical | ✅ Done | Idempotency-Key header on order creation |
+| Razorpay disable | Critical | ✅ Done | Removed from enum until webhook handler exists |
+| Per-country tax | High | ✅ Done | getTaxConfig() via region-config, server-side only |
+| Admin permission enforcement | High | ✅ Done | requireAdminPermission() + logAdminAction() on all admin routes |
+| Scheduled cleanup jobs | High | ✅ Done | pg_cron: expire carts hourly, cancel unpaid orders every 10 min |
+| Email notifications | High | ⬜ Todo | Order confirm, shipping, return. Resend + React Email. RESEND_API_KEY env var defined. |
+| Sentry error tracking | High | ⬜ Todo | Add `@sentry/nextjs` — ~30 min task, pre-launch |
+| CSP headers | Medium | ⬜ Todo | Add via `next.config.ts` headers() |
+| Rate limiting | Medium | ⬜ Todo | Upstash Redis already configured — apply to remaining `/api/*` routes |
+| Redis caching | Medium | ⬜ Todo | Replace in-memory for CMS delivery cache |
+| Search engine | Low | ⬜ Todo | Algolia/Meilisearch abstraction layer |
+| Real-time inventory | Low | ⬜ Todo | Supabase Realtime for stock updates |
+| Multi-vendor marketplace | Future | ⬜ Todo | Domain extension point defined |

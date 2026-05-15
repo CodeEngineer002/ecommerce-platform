@@ -179,6 +179,8 @@ export function makePriceBreakdown(overrides: Partial<PriceBreakdown> = {}): Pri
     discount: 0,
     taxableAmount: 1000,
     tax: 180,
+    taxRate: 0.18,
+    taxLabel: "GST",
     shipping: 0,
     total: 1180,
     ...overrides,

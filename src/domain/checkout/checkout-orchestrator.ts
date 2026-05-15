@@ -6,6 +6,7 @@ import { calculatePricing } from "@/domain/pricing/pricing-engine";
 import type { CartPricingWarning, CouponData, OrderPricingSnapshot, PriceBreakdown } from "@/domain/pricing/types";
 import { CURRENCY } from "@/lib/constants";
 import { ValidationError } from "@/lib/errors";
+import { getTaxConfig } from "@/lib/tax/tax-service";
 
 export interface CheckoutItem {
   variantId: string;
@@ -17,6 +18,9 @@ export interface CheckoutSummaryInput {
   items: CheckoutItem[];
   couponCode?: string;
   userId: string;
+  /** ISO-3166-1 alpha-2 country code from the shipping address (e.g. 'IN', 'DE', 'AE').
+   *  Used to apply the correct statutory tax rate. Falls back to default if omitted. */
+  countryCode?: string;
 }
 
 export interface ValidatedCheckoutItem {
@@ -91,8 +95,11 @@ export async function buildCheckoutSummary(
     }
   }
 
+  // ── Resolve country-specific tax config ───────────────────────────────────
+  const taxConfig = input.countryCode ? getTaxConfig(input.countryCode) : undefined;
+
   // ── Calculate pricing ─────────────────────────────────────────────────────
-  const pricing = calculatePricing(lineItems, coupon);
+  const pricing = calculatePricing(lineItems, coupon, undefined, taxConfig);
 
   // ── Build validated items with price-change flags ─────────────────────────
   const validatedItems: ValidatedCheckoutItem[] = cartValidation.items.map((item) => {
@@ -113,7 +120,7 @@ export async function buildCheckoutSummary(
     subtotal: pricing.subtotal,
     discount: pricing.discount,
     tax: pricing.tax,
-    taxRate: pricing.tax / (pricing.taxableAmount || 1),
+    taxRate: pricing.taxRate,
     shipping: pricing.shipping,
     total: pricing.total,
     couponCode: coupon?.code ?? null,

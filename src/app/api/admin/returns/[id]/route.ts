@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
-import { AuthError, ForbiddenError, NotFoundError, OrderStateError } from "@/lib/errors";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { PERMISSIONS } from "@/lib/admin/permissions";
+import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
+import { NotFoundError, OrderStateError } from "@/lib/errors";
 
 const schema = z.object({
   action: z.enum(["approve", "reject"]),
@@ -12,23 +13,8 @@ const schema = z.object({
 // PATCH /api/admin/returns/[id]  — approve or reject a return request
 export const PATCH = withApiHandler(
   async (request: Request, context: { params: Promise<{ id: string }> }) => {
-    const userClient = await createClient();
-    const {
-      data: { user },
-    } = await userClient.auth.getUser();
-    if (!user) throw new AuthError();
-
-    const db = createServiceClient();
-
-    const { data: profile } = await db
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
-      throw new ForbiddenError();
-    }
+    const ctx = await requireAdminPermission(PERMISSIONS.ORDERS_MANAGE);
+    const { user, db } = ctx;
 
     const { id: returnId } = await context.params;
 
@@ -45,13 +31,10 @@ export const PATCH = withApiHandler(
     const { action, note } = parsed.data;
 
     if (action === "approve") {
-      if (!note && action === "approve") {
-        // note is optional for approval
-      }
       const { error } = await db.rpc("approve_return", {
         p_return_id: returnId,
         p_admin_id:  user.id,
-        p_note:      note ?? null,
+        p_note:      note ?? undefined,
       });
 
       if (error) {
@@ -86,6 +69,13 @@ export const PATCH = withApiHandler(
       }
     }
 
+    await logAdminAction(ctx, request, {
+      action: action === "approve" ? "approve_return" : "reject_return",
+      entityType: "return",
+      entityId: returnId,
+      metadata: { note },
+    });
+
     return apiSuccess({ success: true });
   },
 );
@@ -93,23 +83,7 @@ export const PATCH = withApiHandler(
 // GET /api/admin/returns/[id]  — get a single return request with items
 export const GET = withApiHandler(
   async (_request: Request, context: { params: Promise<{ id: string }> }) => {
-    const userClient = await createClient();
-    const {
-      data: { user },
-    } = await userClient.auth.getUser();
-    if (!user) throw new AuthError();
-
-    const db = createServiceClient();
-
-    const { data: profile } = await db
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
-      throw new ForbiddenError();
-    }
+    const { db } = await requireAdminPermission(PERMISSIONS.ORDERS_READ);
 
     const { id: returnId } = await context.params;
 
