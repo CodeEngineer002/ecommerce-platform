@@ -7,31 +7,43 @@ import { toast } from "react-hot-toast";
 
 import { QuantitySelector } from "@/components/ecommerce/quantity-selector";
 import { Button } from "@/components/ui/button";
-import { useAddCartItem } from "@/features/cart/hooks/use-cart-mutations";
 import { cn } from "@/lib/utils";
+import { useAddCartItem } from "@/features/cart/hooks/use-cart-mutations";
 import { useCartStore } from "@/store/cart-store";
 import { useWishlistStore } from "@/store/wishlist-store";
 import type { ProductWithDetails } from "@/types";
 
 interface Props {
   product: ProductWithDetails;
-  /** Controlled: current variant ID, owned by ProductDetailClient */
+  /** Controlled: the resolved variant ID (null = no size selected yet) */
   selectedVariantId?: string | null;
-  /** Controlled: called when user clicks a variant button */
+  /**
+   * When true, renders a flat variant picker inside this component.
+   * Used by products that don't use the color+size model (ProductDetailClient
+   * handles color+size via VariantSelector; this flag enables legacy behavior).
+   */
+  showVariantSelector?: boolean;
+  /** Only used when showVariantSelector=true */
   onVariantChange?: (variantId: string) => void;
 }
 
-export function AddToCartSection({ product, selectedVariantId: controlledVariantId, onVariantChange }: Props) {
+export function AddToCartSection({
+  product,
+  selectedVariantId: controlledVariantId,
+  showVariantSelector = false,
+  onVariantChange,
+}: Props) {
   const [quantity, setQuantity] = useState(1);
-  // Support both controlled (from ProductDetailClient) and standalone usage.
-  const [localVariantId, setLocalVariantId] = useState(
-    product.variants[0]?.id ?? null
-  );
-  const selectedVariantId = controlledVariantId !== undefined ? controlledVariantId : localVariantId;
+  const [localVariantId, setLocalVariantId] = useState(product.variants[0]?.id ?? null);
+
+  const selectedVariantId =
+    controlledVariantId !== undefined ? controlledVariantId : localVariantId;
+
   const setSelectedVariantId = (id: string) => {
     setLocalVariantId(id);
     onVariantChange?.(id);
   };
+
   const { openCart } = useCartStore();
   const { mutate: addCartItem, isPending: isAddingToCart } = useAddCartItem();
   const { toggleItem, hasItem } = useWishlistStore();
@@ -45,6 +57,9 @@ export function AddToCartSection({ product, selectedVariantId: controlledVariant
 
   const handleAddToCart = () => {
     if (!selectedVariant) return;
+    const opts = selectedVariant.options as Record<string, string> | null;
+    const label = opts ? Object.values(opts).join(" / ") : selectedVariant.name;
+
     addCartItem(
       {
         variantId: selectedVariant.id,
@@ -63,17 +78,31 @@ export function AddToCartSection({ product, selectedVariantId: controlledVariant
       {
         onSuccess: () => {
           openCart();
-          toast.success("Added to cart!");
+          toast.success(`${label} added to cart!`);
         },
         onError: (err) => toast.error(err.message),
-      },
+      }
     );
   };
 
+  // Determine add-to-cart button label
+  let buttonLabel: React.ReactNode;
+  if (isAddingToCart) {
+    buttonLabel = <><Loader2 className="h-5 w-5 animate-spin" />Adding…</>;
+  } else if (!selectedVariantId) {
+    buttonLabel = "Select a Size";
+  } else if (availableStock === 0) {
+    buttonLabel = "Out of Stock";
+  } else {
+    buttonLabel = <><ShoppingCart className="h-5 w-5" />Add to Cart</>;
+  }
+
+  const isDisabled = !selectedVariantId || availableStock === 0 || isAddingToCart;
+
   return (
     <div className="space-y-4">
-      {/* Variant selector */}
-      {activeVariants.length > 1 && (
+      {/* Flat variant selector — only rendered for non-color+size products */}
+      {showVariantSelector && activeVariants.length > 1 && (
         <div className="space-y-2">
           <p className="text-sm font-medium">Variant</p>
           <div className="flex flex-wrap gap-2">
@@ -102,7 +131,7 @@ export function AddToCartSection({ product, selectedVariantId: controlledVariant
           value={quantity}
           onChange={setQuantity}
           max={Math.min(availableStock, 10)}
-          disabled={availableStock === 0}
+          disabled={availableStock === 0 || !selectedVariantId}
         />
       </div>
 
@@ -112,21 +141,9 @@ export function AddToCartSection({ product, selectedVariantId: controlledVariant
           size="lg"
           className="flex-1 gap-2"
           onClick={handleAddToCart}
-          disabled={availableStock === 0 || !selectedVariant || isAddingToCart}
+          disabled={isDisabled}
         >
-          {isAddingToCart ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Adding…
-            </>
-          ) : availableStock === 0 ? (
-            "Out of Stock"
-          ) : (
-            <>
-              <ShoppingCart className="h-5 w-5" />
-              Add to Cart
-            </>
-          )}
+          {buttonLabel}
         </Button>
         <Button
           size="lg"
