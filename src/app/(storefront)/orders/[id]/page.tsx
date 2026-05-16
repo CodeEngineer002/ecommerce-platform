@@ -79,12 +79,6 @@ export default async function OrderDetailPage({ params }: Props) {
             orderId={order.id}
             canCancel={canCancel}
             canReturn={canReturn && !hasActiveReturn}
-            orderItems={(order.items ?? []).map((i) => ({
-              id:           i.id,
-              product_name: i.product_name,
-              quantity:     i.quantity,
-              unit_price:   i.unit_price,
-            }))}
           />
         </div>
       </div>

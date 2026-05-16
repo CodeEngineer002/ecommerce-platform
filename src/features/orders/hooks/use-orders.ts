@@ -9,7 +9,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { useCartStore } from "@/store/cart-store";
 import type { CheckoutPayload } from "@/types";
 
-import { createOrder, getOrderById, getOrders } from "../services/order.service";
+import { createOrder, deleteOrder, getOrderById, getOrders, createReturnRequest, type ReturnItem } from "../services/order.service";
 
 export const orderKeys = queryKeys.orders;
 
@@ -37,8 +37,7 @@ export function useOrder(orderId: string) {
   });
 }
 
-export function useCreateOrder() {
-  const router = useRouter();
+export function useCreateOrder() {  const router = useRouter();
   const queryClient = useQueryClient();
   const { clearCart, setServerCart } = useCartStore();
 
@@ -55,6 +54,47 @@ export function useCreateOrder() {
     },
     onError: (error: Error) => {
       toast.error(error.message);
+    },
+  });
+}
+
+export function useCancelOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ orderId, reason }: { orderId: string; reason?: string }) =>
+      deleteOrder(orderId, reason),
+    onSuccess: (_data, { orderId }) => {
+      // Invalidate both list and detail so UI refreshes
+      queryClient.invalidateQueries({ queryKey: orderKeys.all });
+      queryClient.invalidateQueries({ queryKey: orderKeys.detail(orderId) });
+      toast.success("Order cancelled successfully");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message ?? "Failed to cancel order");
+    },
+  });
+}
+
+export function useRequestReturn() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      orderId,
+      reason,
+      items,
+    }: {
+      orderId: string;
+      reason:  string;
+      items:   ReturnItem[];
+    }) => createReturnRequest(orderId, reason, items),
+    onSuccess: (_data, { orderId }) => {
+      queryClient.invalidateQueries({ queryKey: orderKeys.detail(orderId) });
+      toast.success("Return request submitted successfully");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message ?? "Failed to submit return request");
     },
   });
 }

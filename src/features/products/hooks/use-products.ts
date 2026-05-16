@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { queryKeys } from "@/lib/query-keys";
 import type { ProductFilters } from "@/types";
@@ -21,9 +21,11 @@ export function useProducts(filters: ProductFilters = {}) {
   return useQuery({
     queryKey: queryKeys.products.list(filters),
     queryFn: () => getProducts(filters),
-    // 2 min: product lists change with filters/pagination, short window is fine
     staleTime: 2 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+    // Keep showing previous page/search results while new query is in-flight
+    // This prevents the blank grid flash between filter/search changes
+    placeholderData: keepPreviousData,
   });
 }
 

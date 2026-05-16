@@ -41,6 +41,7 @@ export function buildLocaleRoutes(params: LocaleParams) {
     checkout:      r('/checkout'),
     orders:        r('/orders'),
     order:         (id: string) => r(`/orders/${id}`),
+    orderReturn:   (id: string) => r(`/orders/${id}/return`),
     orderSuccess:  (id: string) => r(`/orders/${id}/success`),
     profile:       r('/profile'),
     search:        r('/search'),

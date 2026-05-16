@@ -1,8 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
 import type { PaginatedResult, ProductFilters, ProductWithDetails } from "@/types";
 
-// Single source of truth for the product join shape
-const PRODUCT_SELECT = `
+// Single source of truth for the product join shape (used by API route, kept here for reference)
+export const PRODUCT_SELECT = `
   *,
   category:categories!products_category_id_fkey(*),
   images:product_images(*),
@@ -22,7 +22,6 @@ export async function getProducts(
     sortBy = "newest",
     page = 1,
     pageSize = 12,
-    tags,
     countryId,
   } = filters;
 
@@ -31,42 +30,30 @@ export async function getProducts(
     .select(PRODUCT_SELECT, { count: "exact" })
     .eq("is_active", true);
 
-  // Country filtering:
-  // available_country_ids = '{}' means "all countries" (no restriction)
-  // available_country_ids = '{in,de}' means only those countries
   if (countryId) {
     query = query.or(
       `available_country_ids.eq.{},available_country_ids.cs.{${countryId}}`
     );
   }
 
-  // Resolve category slug → id with a join instead of a separate round-trip
   if (category) {
-    // Filter by category slug via the join alias — Supabase supports this
     query = query.eq("category.slug", category);
   }
 
   if (minPrice !== undefined) query = query.gte("base_price", minPrice);
   if (maxPrice !== undefined) query = query.lte("base_price", maxPrice);
   if (isFeatured) query = query.eq("is_featured", true);
-  if (tags?.length) query = query.overlaps("tags", tags);
 
-  if (search) {
-    query = query.ilike("name", `%${search}%`);
+  if (search && search.trim().length >= 2) {
+    const safe = search.trim().replace(/[\\%_]/g, "\\$&");
+    query = query.ilike("name", `%${safe}%`);
   }
 
   switch (sortBy) {
-    case "price_asc":
-      query = query.order("base_price", { ascending: true });
-      break;
-    case "price_desc":
-      query = query.order("base_price", { ascending: false });
-      break;
-    case "name_asc":
-      query = query.order("name", { ascending: true });
-      break;
-    default:
-      query = query.order("created_at", { ascending: false });
+    case "price_asc":  query = query.order("base_price", { ascending: true });  break;
+    case "price_desc": query = query.order("base_price", { ascending: false }); break;
+    case "name_asc":   query = query.order("name",       { ascending: true });  break;
+    default:           query = query.order("created_at", { ascending: false }); break;
   }
 
   const from = (page - 1) * pageSize;
@@ -76,8 +63,8 @@ export async function getProducts(
   if (error) throw error;
 
   return {
-    data: (data ?? []) as unknown as ProductWithDetails[],
-    count: count ?? 0,
+    data:       (data ?? []) as unknown as ProductWithDetails[],
+    count:      count ?? 0,
     page,
     pageSize,
     totalPages: Math.ceil((count ?? 0) / pageSize),
@@ -209,14 +196,6 @@ export async function getRelatedProducts(
 }
 
 export async function searchProducts(query: string, limit = 20): Promise<ProductWithDetails[]> {
-  const supabase = createClient();
-  const { data } = await supabase
-    .from("products")
-    .select(PRODUCT_SELECT)
-    .eq("is_active", true)
-    .ilike("name", `%${query}%`)
-    .order("is_featured", { ascending: false })
-    .limit(limit);
-
-  return (data ?? []) as unknown as ProductWithDetails[];
+  const result = await getProducts({ search: query, pageSize: limit, sortBy: "newest" });
+  return result.data;
 }

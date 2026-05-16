@@ -8,10 +8,8 @@ import { SearchBar } from "@/components/common/search-bar";
 import { FilterSidebar } from "@/components/ecommerce/filter-sidebar";
 import { ProductGrid } from "@/components/ecommerce/product-grid";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCategories } from "@/features/products/hooks/use-categories";
 import { useProducts } from "@/features/products/hooks/use-products";
-import { SORT_OPTIONS } from "@/lib/constants";
 import type { ProductFilters } from "@/types";
 
 function ProductsPageContent() {
@@ -29,15 +27,15 @@ function ProductsPageContent() {
     countryId,
   });
 
-  const { data, isLoading } = useProducts(filters);
+  const { data, isLoading, isFetching } = useProducts(filters);
 
   const handleFiltersChange = useCallback((newFilters: ProductFilters) => {
     setFilters(newFilters);
   }, []);
 
   const handleReset = useCallback(() => {
-    setFilters({ sortBy: "newest", page: 1, pageSize: 12 });
-  }, []);
+    setFilters({ sortBy: "newest", page: 1, pageSize: 12, countryId });
+  }, [countryId]);
 
   return (
     <div className="container py-8">
@@ -47,34 +45,22 @@ function ProductsPageContent() {
           <h1 className="text-2xl font-bold">All Products</h1>
           {data && (
             <p className="text-sm text-muted-foreground">
-              {data.count} products found
+              {data.count} product{data.count !== 1 ? "s" : ""} found
             </p>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <SearchBar
-            defaultValue={filters.search}
-            onSearch={(q) => setFilters((f) => ({ ...f, search: q, page: 1 }))}
-            className="w-64"
-          />
-          <Select
-            value={filters.sortBy}
-            onValueChange={(v) =>
-              setFilters((f) => ({ ...f, sortBy: v as ProductFilters["sortBy"], page: 1 }))
-            }
-          >
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              {SORT_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <SearchBar
+          defaultValue={filters.search ?? ""}
+          onSearch={(q) =>
+            setFilters((f) => {
+              const newSearch = q || undefined;
+              // Skip re-render + refetch if value hasn't changed
+              if (f.search === newSearch) return f;
+              return { ...f, search: newSearch, page: 1 };
+            })
+          }
+          className="w-72"
+        />
       </div>
 
       <div className="flex gap-8">
@@ -96,11 +82,13 @@ function ProductsPageContent() {
             />
           ) : (
             <>
-              <ProductGrid
-                products={data?.data ?? []}
-                loading={isLoading}
-                skeletonCount={12}
-              />
+              <div className={isFetching && !isLoading ? "opacity-60 transition-opacity duration-200" : "transition-opacity duration-200"}>
+                <ProductGrid
+                  products={data?.data ?? []}
+                  loading={isLoading}
+                  skeletonCount={12}
+                />
+              </div>
               {data && data.totalPages > 1 && (
                 <div className="flex justify-center">
                   <Pagination

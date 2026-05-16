@@ -10,7 +10,12 @@ const schema = z.object({
   reason: z.string().max(500).optional(),
 });
 
-export const POST = withApiHandler(
+/**
+ * DELETE /api/orders/[id]
+ * Customer-facing cancel endpoint. Validates ownership + cancellable state,
+ * calls cancel_order RPC, then fires a cancellation email (fire-and-forget).
+ */
+export const DELETE = withApiHandler(
   async (request: Request, context: { params: Promise<{ id: string }> }) => {
     const userClient = await createClient();
     const {
@@ -20,10 +25,11 @@ export const POST = withApiHandler(
 
     const { id: orderId } = await context.params;
 
+    // Parse optional reason from request body (graceful fallback for empty body)
     const body: unknown = await request.json().catch(() => ({}));
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
-      return apiError("Invalid request", 400, "VALIDATION_ERROR");
+      return apiError("Invalid request body", 400, "VALIDATION_ERROR");
     }
     const { reason } = parsed.data;
 
@@ -44,22 +50,22 @@ export const POST = withApiHandler(
       );
     }
 
-    const { error } = await db.rpc("cancel_order", {
+    const { error: rpcError } = await db.rpc("cancel_order", {
       p_order_id:   orderId,
       p_user_id:    user.id,
       p_reason:     reason ?? null,
       p_actor_type: "customer",
     });
 
-    if (error) {
-      const msg = error.message ?? "";
-      if (error.code === "P0006" || msg.includes("cannot be cancelled")) {
+    if (rpcError) {
+      const msg = rpcError.message ?? "";
+      if (rpcError.code === "P0006" || msg.includes("cannot be cancelled")) {
         throw new OrderStateError(msg || "Order cannot be cancelled");
       }
       throw new Error(msg || "Failed to cancel order");
     }
 
-    // Fire cancellation email — fire-and-forget
+    // Fire cancellation email — fetch customer profile for email + name
     const { data: profile } = await db
       .from("profiles")
       .select("email, full_name")

@@ -73,6 +73,14 @@ export async function cancelOrder(orderId: string, reason?: string): Promise<voi
   });
 }
 
+/** REST DELETE /api/orders/[id] — cancel via standard HTTP DELETE */
+export async function deleteOrder(orderId: string, reason?: string): Promise<void> {
+  await apiFetch(`/api/orders/${orderId}`, {
+    method: "DELETE",
+    body:   JSON.stringify({ reason }),
+  });
+}
+
 export interface ReturnItem {
   order_item_id: string;
   quantity:      number;

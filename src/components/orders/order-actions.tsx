@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
-import { cancelOrder, createReturnRequest, type ReturnItem } from "@/features/orders/services/order.service";
+import { useCancelOrder } from "@/features/orders/hooks/use-orders";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,71 +15,29 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { useRouter } from "next/navigation";
-import toast from "react-hot-toast";
-
-interface OrderItem {
-  id:           string;
-  product_name: string;
-  quantity:     number;
-  unit_price:   number;
-}
+import { ROUTES } from "@/lib/constants";
 
 interface Props {
   orderId:    string;
   canCancel:  boolean;
   canReturn:  boolean;
-  orderItems: OrderItem[];
+  returnHref?: string; // optional override — locale pages pass their own prefixed URL
 }
 
-export function OrderActions({ orderId, canCancel, canReturn, orderItems }: Props) {
+export function OrderActions({ orderId, canCancel, canReturn, returnHref }: Props) {
   const router = useRouter();
+  const { mutateAsync: cancelOrder, isPending: cancelling } = useCancelOrder();
 
-  const [cancelOpen,  setCancelOpen]  = useState(false);
-  const [returnOpen,  setReturnOpen]  = useState(false);
+  const [cancelOpen,   setCancelOpen]   = useState(false);
   const [cancelReason, setCancelReason] = useState("");
-  const [returnReason, setReturnReason] = useState("");
-  const [returnQtys, setReturnQtys]   = useState<Record<string, number>>({});
-  const [submitting, setSubmitting]   = useState(false);
 
   async function handleCancel() {
-    setSubmitting(true);
     try {
-      await cancelOrder(orderId, cancelReason || undefined);
-      toast.success("Order cancelled successfully");
+      await cancelOrder({ orderId, reason: cancelReason || undefined });
       setCancelOpen(false);
       router.refresh();
     } catch {
-      toast.error("Failed to cancel order. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleReturn() {
-    const items: ReturnItem[] = Object.entries(returnQtys)
-      .filter(([, qty]) => qty > 0)
-      .map(([itemId, qty]) => ({ order_item_id: itemId, quantity: qty }));
-
-    if (items.length === 0) {
-      toast.error("Select at least one item to return");
-      return;
-    }
-    if (!returnReason.trim()) {
-      toast.error("Please provide a reason for the return");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await createReturnRequest(orderId, returnReason, items);
-      toast.success("Return request submitted");
-      setReturnOpen(false);
-      router.refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to submit return request");
-    } finally {
-      setSubmitting(false);
+      // error toast handled by the hook
     }
   }
 
@@ -87,8 +47,8 @@ export function OrderActions({ orderId, canCancel, canReturn, orderItems }: Prop
     <>
       <div className="flex gap-2">
         {canReturn && (
-          <Button variant="outline" size="sm" onClick={() => setReturnOpen(true)}>
-            Request Return
+          <Button variant="outline" size="sm" asChild>
+            <Link href={returnHref ?? ROUTES.orderReturn(orderId)}>Request Return</Link>
           </Button>
         )}
         {canCancel && (
@@ -98,7 +58,7 @@ export function OrderActions({ orderId, canCancel, canReturn, orderItems }: Prop
         )}
       </div>
 
-      {/* Cancel dialog */}
+      {/* Cancel confirmation dialog */}
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <DialogContent>
           <DialogHeader>
@@ -120,69 +80,11 @@ export function OrderActions({ orderId, canCancel, canReturn, orderItems }: Prop
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelOpen(false)} disabled={submitting}>
+            <Button variant="outline" onClick={() => setCancelOpen(false)} disabled={cancelling}>
               Keep Order
             </Button>
-            <Button variant="destructive" onClick={handleCancel} disabled={submitting}>
-              {submitting ? "Cancelling…" : "Cancel Order"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Return dialog */}
-      <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Request Return</DialogTitle>
-            <DialogDescription>
-              Select the items you want to return and provide a reason.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              {orderItems.map((item) => (
-                <div key={item.id} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="flex-1 truncate">{item.product_name}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Qty:</span>
-                    <select
-                      className="rounded border bg-background px-2 py-1 text-sm"
-                      value={returnQtys[item.id] ?? 0}
-                      onChange={(e) =>
-                        setReturnQtys((prev) => ({ ...prev, [item.id]: Number(e.target.value) }))
-                      }
-                    >
-                      {Array.from({ length: item.quantity + 1 }, (_, i) => (
-                        <option key={i} value={i}>
-                          {i}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="return-reason">Reason for return</Label>
-              <textarea
-                id="return-reason"
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                rows={3}
-                maxLength={500}
-                placeholder="Describe why you want to return these items..."
-                value={returnReason}
-                onChange={(e) => setReturnReason(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setReturnOpen(false)} disabled={submitting}>
-              Cancel
-            </Button>
-            <Button onClick={handleReturn} disabled={submitting}>
-              {submitting ? "Submitting…" : "Submit Return"}
+            <Button variant="destructive" onClick={handleCancel} disabled={cancelling}>
+              {cancelling ? "Cancelling…" : "Cancel Order"}
             </Button>
           </DialogFooter>
         </DialogContent>

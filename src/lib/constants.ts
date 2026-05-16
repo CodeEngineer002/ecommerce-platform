@@ -71,6 +71,7 @@ export const ROUTES = {
   orderSuccess: (id: string) => `/orders/${id}/success`,
   orders: "/orders",
   order: (id: string) => `/orders/${id}`,
+  orderReturn: (id: string) => `/orders/${id}/return`,
   profile: "/profile",
   login: "/login",
   register: "/register",
