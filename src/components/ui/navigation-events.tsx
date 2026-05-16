@@ -27,6 +27,12 @@ export function NavigationEvents() {
       // Ignore non-left clicks and modifier keys (open in new tab etc.)
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
 
+      // A child element (e.g. "Add to Cart" button inside a <Link>) already called
+      // e.preventDefault() — the navigation won't happen, so never start the overlay.
+      // Without this guard the overlay fires and gets permanently stuck because
+      // pathname never changes and stop() is never called.
+      if (e.defaultPrevented) return;
+
       const anchor = (e.target as Element).closest("a");
       if (!anchor) return;
 

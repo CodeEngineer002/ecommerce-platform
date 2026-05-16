@@ -15,13 +15,23 @@ import type { ProductWithDetails } from "@/types";
 
 interface Props {
   product: ProductWithDetails;
+  /** Controlled: current variant ID, owned by ProductDetailClient */
+  selectedVariantId?: string | null;
+  /** Controlled: called when user clicks a variant button */
+  onVariantChange?: (variantId: string) => void;
 }
 
-export function AddToCartSection({ product }: Props) {
+export function AddToCartSection({ product, selectedVariantId: controlledVariantId, onVariantChange }: Props) {
   const [quantity, setQuantity] = useState(1);
-  const [selectedVariantId, setSelectedVariantId] = useState(
+  // Support both controlled (from ProductDetailClient) and standalone usage.
+  const [localVariantId, setLocalVariantId] = useState(
     product.variants[0]?.id ?? null
   );
+  const selectedVariantId = controlledVariantId !== undefined ? controlledVariantId : localVariantId;
+  const setSelectedVariantId = (id: string) => {
+    setLocalVariantId(id);
+    onVariantChange?.(id);
+  };
   const { openCart } = useCartStore();
   const { mutate: addCartItem, isPending: isAddingToCart } = useAddCartItem();
   const { toggleItem, hasItem } = useWishlistStore();

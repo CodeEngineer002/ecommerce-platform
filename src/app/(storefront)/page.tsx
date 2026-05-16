@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { FreeShippingNote } from "@/components/ecommerce/free-shipping-note";
 import { ProductGrid } from "@/components/ecommerce/product-grid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -162,7 +163,7 @@ export default async function HomePage() {
       <section className="container">
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           {[
-            { icon: Truck, title: "Free Shipping", desc: "On orders above ₹999" },
+            { icon: Truck, title: "Free Shipping", desc: <FreeShippingNote variant="short" /> },
             { icon: ShieldCheck, title: "Secure Payment", desc: "100% safe checkout" },
             { icon: Zap, title: "Fast Delivery", desc: "2-5 business days" },
             { icon: Star, title: "Top Quality", desc: "Curated products" },

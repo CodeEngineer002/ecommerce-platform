@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -88,9 +87,9 @@ export function Navbar({ user }: NavbarProps) {
           <Button variant="ghost" size="icon" className="relative" onClick={toggleCart} aria-label="Cart">
             <ShoppingCart className="h-5 w-5" />
             {count > 0 && (
-              <Badge className="absolute -right-1 -top-1 h-5 w-5 rounded-full p-0 text-[10px] font-bold">
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
                 {count > 9 ? "9+" : count}
-              </Badge>
+              </span>
             )}
           </Button>
 

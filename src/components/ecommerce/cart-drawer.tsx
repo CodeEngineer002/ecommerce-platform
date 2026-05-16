@@ -9,7 +9,7 @@ import { useTransition, useState, useCallback } from "react";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useRemoveCartItem, useUpdateCartQuantity } from "@/features/cart/hooks/use-cart-mutations";
 import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST } from "@/lib/constants";
 import { useFormatPrice } from "@/hooks/use-format-price";
@@ -82,6 +82,9 @@ export function CartDrawer() {
           <SheetTitle>
             Shopping Cart ({displayCount})
           </SheetTitle>
+          <SheetDescription className="sr-only">
+            Review and manage items in your shopping cart
+          </SheetDescription>
         </SheetHeader>
 
         {isEmpty ? (

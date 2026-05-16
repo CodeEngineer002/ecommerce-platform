@@ -6,6 +6,6 @@
     "noEmit": false,
     "outDir": ".seed-dist"
   },
-  "include": ["supabase/seed.ts"],
+  "include": ["supabase/*.ts"],
   "exclude": ["node_modules"]
 }

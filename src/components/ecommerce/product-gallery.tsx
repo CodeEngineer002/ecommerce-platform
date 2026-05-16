@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import type { ProductImage } from "@/types";
@@ -9,17 +9,45 @@ import type { ProductImage } from "@/types";
 interface ProductGalleryProps {
   images: ProductImage[];
   productName: string;
+  /** When set, the gallery syncs its active image to match the selected variant. */
+  selectedVariantId?: string | null;
+  /**
+   * Called when the user clicks a thumbnail whose image is variant-specific
+   * (image.variant_id is set). Allows bidirectional sync: thumbnail click
+   * also switches the active variant.
+   */
+  onVariantImageClick?: (variantId: string) => void;
 }
 
-export function ProductGallery({ images, productName }: ProductGalleryProps) {
+export function ProductGallery({
+  images,
+  productName,
+  selectedVariantId,
+  onVariantImageClick,
+}: ProductGalleryProps) {
   const [activeIndex, setActiveIndex] = useState(0);
+
+  // When the selected variant changes externally (variant button click),
+  // find the matching image and update activeIndex.
+  useEffect(() => {
+    if (!selectedVariantId) return;
+    const idx = images.findIndex((img) => img.variant_id === selectedVariantId);
+    if (idx !== -1) setActiveIndex(idx);
+  }, [selectedVariantId, images]);
+
   const activeImage = images[activeIndex];
 
   if (!images.length) {
-    return (
-      <div className="aspect-square w-full rounded-lg bg-muted" />
-    );
+    return <div className="aspect-square w-full rounded-lg bg-muted" />;
   }
+
+  const handleThumbnailClick = (i: number) => {
+    setActiveIndex(i);
+    // Bidirectional: thumbnail click also switches the variant when the image
+    // is tagged to a specific variant.
+    const img = images[i];
+    if (img.variant_id) onVariantImageClick?.(img.variant_id);
+  };
 
   return (
     <div className="space-y-3">
@@ -30,8 +58,9 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
           alt={activeImage.alt_text ?? productName}
           fill
           priority
+          quality={90}
           className="object-cover"
-          sizes="(max-width: 768px) 100vw, 50vw"
+          sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 600px"
         />
       </div>
 
@@ -41,14 +70,14 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
           {images.map((img, i) => (
             <button
               key={img.id}
-              onClick={() => setActiveIndex(i)}
+              onClick={() => handleThumbnailClick(i)}
               className={cn(
                 "relative h-16 w-16 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-colors",
                 i === activeIndex
                   ? "border-primary"
                   : "border-transparent hover:border-muted-foreground"
               )}
-              aria-label={`View image ${i + 1}`}
+              aria-label={img.alt_text ?? `View image ${i + 1}`}
             >
               <Image
                 src={img.url}
