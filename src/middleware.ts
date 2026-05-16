@@ -79,9 +79,19 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(redirectUrl);
     }
 
-    // Valid — annotate response with locale context headers
-    const response = buildPageResponse();
+    // Valid — annotate locale context on requestHeaders FIRST so API routes
+    // (which read from request.headers, not response.headers) receive the
+    // correct country when the client calls /api/cart, /api/orders, etc.
     const localeId = toLocaleId(country, lang);
+    requestHeaders.set("x-country", country);
+    requestHeaders.set("x-language", lang);
+    requestHeaders.set("x-locale-id", localeId);
+    requestHeaders.set("x-text-direction", LANGUAGES[lang].dir);
+
+    // buildPageResponse() passes requestHeaders into NextResponse.next() so
+    // RSC / Server Components and API routes all see the locale headers.
+    const response = buildPageResponse();
+    // Also expose on the response so client code / browser can read them.
     response.headers.set("x-country", country);
     response.headers.set("x-language", lang);
     response.headers.set("x-locale-id", localeId);
