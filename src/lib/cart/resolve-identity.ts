@@ -10,6 +10,8 @@
 
 import "server-only";
 
+import { COUNTRY_COOKIE } from "@/lib/i18n/config";
+import { REGION_CONFIGS } from "@/lib/i18n/region-config";
 import { createClient } from "@/lib/supabase/server";
 
 import {
@@ -26,9 +28,26 @@ export interface CartContext extends CartIdentity {
 export async function resolveCartIdentity(request: Request): Promise<CartContext> {
   const headers = request.headers;
 
-  // Locale context from middleware
-  const country_id = headers.get("x-country") ?? "in";
-  const currency_code = "INR"; // TODO: derive from country when multi-currency is ready
+  // Locale context — priority order:
+  //   1. x-country header (set by middleware on page requests via requestHeaders)
+  //   2. x-country-pref cookie (always sent by the browser; set by middleware on every
+  //      page visit and persisted for 1 year) — this is the reliable source for client-side
+  //      fetch("/api/...") calls since /api is in LOCALE_SKIP_PREFIXES and middleware
+  //      does not inject locale headers for API routes.
+  //   3. Fallback to "in"
+  const cookieHeader = headers.get("cookie") ?? "";
+  const countryCookieMatch = cookieHeader.match(
+    new RegExp(`(?:^|; )${COUNTRY_COOKIE}=([^;]+)`)
+  );
+  const countryCookieValue = countryCookieMatch
+    ? decodeURIComponent(countryCookieMatch[1]).toLowerCase()
+    : null;
+
+  const country_id = (headers.get("x-country") ?? countryCookieValue ?? "in").toLowerCase();
+
+  // Derive currency from region config so each country uses its own currency.
+  const regionConfig = REGION_CONFIGS[country_id as keyof typeof REGION_CONFIGS];
+  const currency_code = regionConfig?.currencyCode ?? "INR";
 
   // Try authenticated user first
   const supabase = await createClient();
@@ -38,8 +57,7 @@ export async function resolveCartIdentity(request: Request): Promise<CartContext
     return { user_id: user.id, country_id, currency_code };
   }
 
-  // Guest: read session from cookie header
-  const cookieHeader = headers.get("cookie") ?? "";
+  // Guest: read session from cookie header (cookieHeader already extracted above)
   const match = cookieHeader.match(new RegExp(`(?:^|; )${GUEST_CART_COOKIE}=([^;]+)`));
   const existing = match ? decodeURIComponent(match[1]) : null;
 

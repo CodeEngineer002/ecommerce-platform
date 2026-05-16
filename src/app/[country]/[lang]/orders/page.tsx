@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isValidCountry, isValidLanguage, type CountryCode, type LanguageCode } from "@/lib/i18n/config";
+import { REGION_CONFIGS } from "@/lib/i18n/region-config";
 import { buildLocaleRoutes, type LocaleParams } from "@/lib/i18n/routing";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatPrice } from "@/lib/utils";
@@ -26,6 +27,10 @@ export default async function LocaleOrdersPage({ params }: Props) {
     ? { country: country as CountryCode, lang: lang as LanguageCode }
     : { country: "in", lang: "en" };
   const routes = buildLocaleRoutes(localeParams);
+
+  const countryKey = isValidCountry(country) ? (country as CountryCode) : "in";
+  const { currencyCode, currencyLocale } = REGION_CONFIGS[countryKey];
+  const fmt = (amount: number) => formatPrice(amount, currencyCode, currencyLocale);
 
   const { data: ordersData } = await supabase
     .from("orders")
@@ -67,12 +72,12 @@ export default async function LocaleOrdersPage({ params }: Props) {
                         )}
                         <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
                       </div>
-                      <span>{formatPrice(item.total)}</span>
+                      <span>{fmt(item.total)}</span>
                     </div>
                   ))}
                 </div>
                 <div className="flex items-center justify-between border-t pt-2">
-                  <span className="font-semibold">Total: {formatPrice(order.total)}</span>
+                  <span className="font-semibold">Total: {fmt(order.total)}</span>
                   <Button variant="outline" size="sm" asChild>
                     <Link href={routes.order(order.id)}>View Details</Link>
                   </Button>

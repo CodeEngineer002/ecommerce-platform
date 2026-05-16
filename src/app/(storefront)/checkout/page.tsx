@@ -22,7 +22,7 @@ import { useServerCart } from "@/features/cart/hooks/use-server-cart";
 import { CheckoutAddressPanel } from "@/features/checkout/components/checkout-address-panel";
 import { useCreateOrder } from "@/features/orders/hooks/use-orders";
 import { ROUTES } from "@/lib/constants";
-import { formatPrice } from "@/lib/utils";
+import { useFormatPrice } from "@/hooks/use-format-price";
 import { checkoutExtrasSchema, type CheckoutExtrasData } from "@/lib/validators";
 import { useCartStore } from "@/store/cart-store";
 import { useUserStore } from "@/store/user-store";
@@ -108,6 +108,7 @@ export default function CheckoutPage() {
   const items      = useCartStore((s) => s.items);
   const { user } = useUserStore();
   const { mutate: createOrder, isPending } = useCreateOrder();
+  const fmt = useFormatPrice();
 
   const params = useParams<{ country?: string }>();
   // Prefer the country from serverCart (set by middleware/cart-service) as it
@@ -429,7 +430,7 @@ export default function CheckoutPage() {
                           <p className="text-xs text-amber-600">Price updated</p>
                         )}
                       </div>
-                      <span>{formatPrice(item.current_unit_price * item.quantity)}</span>
+                      <span>{fmt(item.current_unit_price * item.quantity)}</span>
                     </li>
                   ))}
                 </ul>
@@ -438,12 +439,12 @@ export default function CheckoutPage() {
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Subtotal</span>
-                      <span>{formatPrice(pricing.subtotal)}</span>
+                      <span>{fmt(pricing.subtotal)}</span>
                     </div>
                     {pricing.discount > 0 && (
                       <div className="flex justify-between text-green-600">
                         <span>Discount</span>
-                        <span>−{formatPrice(pricing.discount)}</span>
+                        <span>−{fmt(pricing.discount)}</span>
                       </div>
                     )}
                     <div className="flex justify-between">
@@ -452,11 +453,11 @@ export default function CheckoutPage() {
                           ? `${pricing.tax_label} (${Math.round(pricing.tax_rate * 100)}%)`
                           : "Tax"}
                       </span>
-                      <span>{formatPrice(pricing.estimated_tax)}</span>
+                      <span>{fmt(pricing.estimated_tax)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Shipping</span>
-                      <span>{pricing.estimated_shipping === 0 ? "FREE" : formatPrice(pricing.estimated_shipping)}</span>
+                      <span>{pricing.estimated_shipping === 0 ? "FREE" : fmt(pricing.estimated_shipping)}</span>
                     </div>
                   </div>
                 ) : (
@@ -470,7 +471,7 @@ export default function CheckoutPage() {
                 <div className="flex justify-between font-semibold">
                   <span>Total</span>
                   {pricing ? (
-                    <span>{formatPrice(pricing.total)}</span>
+                    <span>{fmt(pricing.total)}</span>
                   ) : (
                     <Skeleton className="h-4 w-20" />
                   )}

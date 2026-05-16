@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { isValidCountry, isValidLanguage, type CountryCode, type LanguageCode } from "@/lib/i18n/config";
+import { REGION_CONFIGS } from "@/lib/i18n/region-config";
 import { buildLocaleRoutes, type LocaleParams } from "@/lib/i18n/routing";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatPrice } from "@/lib/utils";
@@ -45,6 +46,10 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
     : { country: "in", lang: "en" };
   const routes = buildLocaleRoutes(localeParams);
 
+  const countryKey = isValidCountry(country) ? (country as CountryCode) : "in";
+  const { currencyCode, currencyLocale } = REGION_CONFIGS[countryKey];
+  const fmt = (amount: number) => formatPrice(amount, currencyCode, currencyLocale);
+
   const shipping = order.shipping_address as Record<string, string>;
 
   return (
@@ -82,10 +87,10 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
                         <p className="text-xs text-muted-foreground">{item.variant_name}</p>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        {formatPrice(item.unit_price)} × {item.quantity}
+                        {fmt(item.unit_price)} × {item.quantity}
                       </p>
                     </div>
-                    <span className="font-medium">{formatPrice(item.total)}</span>
+                    <span className="font-medium">{fmt(item.total)}</span>
                   </li>
                 ))}
               </ul>
@@ -114,26 +119,26 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Subtotal</span>
-              <span>{formatPrice(order.subtotal)}</span>
+              <span>{fmt(order.subtotal)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Tax</span>
-              <span>{formatPrice(order.tax)}</span>
+              <span>{fmt(order.tax)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Shipping</span>
-              <span>{order.shipping === 0 ? "FREE" : formatPrice(order.shipping)}</span>
+              <span>{order.shipping === 0 ? "FREE" : fmt(order.shipping)}</span>
             </div>
             {order.discount > 0 && (
               <div className="flex justify-between text-green-600">
                 <span>Discount</span>
-                <span>-{formatPrice(order.discount)}</span>
+                <span>-{fmt(order.discount)}</span>
               </div>
             )}
             <Separator />
             <div className="flex justify-between font-semibold">
               <span>Total</span>
-              <span>{formatPrice(order.total)}</span>
+              <span>{fmt(order.total)}</span>
             </div>
             {order.payment && (
               <>

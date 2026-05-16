@@ -1,5 +1,7 @@
-import { cn } from "@/lib/utils";
-import { calculateDiscount, formatPrice } from "@/lib/utils";
+"use client";
+
+import { cn, calculateDiscount } from "@/lib/utils";
+import { useFormatPrice } from "@/hooks/use-format-price";
 
 interface PriceDisplayProps {
   price: number;
@@ -15,16 +17,17 @@ const sizeClasses = {
 };
 
 export function PriceDisplay({ price, comparePrice, className, size = "md" }: PriceDisplayProps) {
+  const fmt = useFormatPrice();
   const discount = comparePrice ? calculateDiscount(price, comparePrice) : 0;
   const classes = sizeClasses[size];
 
   return (
     <div className={cn("flex items-center gap-2 flex-wrap", className)}>
-      <span className={cn("text-foreground", classes.price)}>{formatPrice(price)}</span>
+      <span className={cn("text-foreground", classes.price)}>{fmt(price)}</span>
       {comparePrice && comparePrice > price && (
         <>
           <span className={cn("text-muted-foreground line-through", classes.compare)}>
-            {formatPrice(comparePrice)}
+            {fmt(comparePrice)}
           </span>
           {discount > 0 && (
             <span
@@ -41,3 +44,4 @@ export function PriceDisplay({ price, comparePrice, className, size = "md" }: Pr
     </div>
   );
 }
+

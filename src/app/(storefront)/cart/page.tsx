@@ -11,13 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useRemoveCartItem, useUpdateCartQuantity } from "@/features/cart/hooks/use-cart-mutations";
 import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST } from "@/lib/constants";
-import { formatPrice } from "@/lib/utils";
+import { useFormatPrice } from "@/hooks/use-format-price";
 import { useCartStore } from "@/store/cart-store";
 
 export default function CartPage() {
   const { items, subtotal } = useCartStore();
   const { mutate: removeItem } = useRemoveCartItem();
   const { mutate: updateQuantity } = useUpdateCartQuantity();
+  const fmt = useFormatPrice();
   const sub = subtotal();
   const shipping = sub >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
   const total = sub + shipping;
@@ -68,7 +69,7 @@ export default function CartPage() {
                         value={item.quantity}
                         onChange={(q) => updateQuantity({ variantId: item.variant_id, quantity: q })}
                       />
-                      <p className="text-sm font-semibold">{formatPrice(price * item.quantity)}</p>
+                      <p className="text-sm font-semibold">{fmt(price * item.quantity)}</p>
                       <button
                         onClick={() => removeItem({ variantId: item.variant_id })}
                         className="ml-auto text-muted-foreground hover:text-destructive"
@@ -90,24 +91,24 @@ export default function CartPage() {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Subtotal</span>
-              <span>{formatPrice(sub)}</span>
+              <span>{fmt(sub)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Shipping</span>
               <span className={shipping === 0 ? "text-green-600" : ""}>
-                {shipping === 0 ? "FREE" : formatPrice(shipping)}
+                {shipping === 0 ? "FREE" : fmt(shipping)}
               </span>
             </div>
             {shipping > 0 && (
               <p className="text-xs text-muted-foreground">
-                Add {formatPrice(FREE_SHIPPING_THRESHOLD - sub)} more for free shipping
+                Add {fmt(FREE_SHIPPING_THRESHOLD - sub)} more for free shipping
               </p>
             )}
           </div>
           <Separator className="my-4" />
           <div className="flex justify-between font-semibold">
             <span>Total</span>
-            <span>{formatPrice(total)}</span>
+            <span>{fmt(total)}</span>
           </div>
           <Button className="mt-6 w-full" size="lg" asChild>
             <Link href={ROUTES.checkout}>Proceed to Checkout</Link>

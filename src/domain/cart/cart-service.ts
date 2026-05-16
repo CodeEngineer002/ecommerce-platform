@@ -336,11 +336,12 @@ export async function getOrCreateCart(identity: CartIdentity): Promise<CartSumma
       .single();
 
     if (existing) {
-      // Extend TTL on activity and sync country if region changed
+      // Extend TTL on activity and sync country + currency if region changed
       await db.from("carts")
         .update({
           expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
           country_id: country,
+          currency_code: currency,
         })
         .eq("id", existing.id);
       return buildCartSummary(existing.id);
