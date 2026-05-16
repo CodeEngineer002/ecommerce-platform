@@ -104,7 +104,14 @@ export function CartDrawer() {
                 {items.map((item) => {
                   const product = item.variant.product;
                   const price = item.variant.price ?? product.base_price;
-                  const image = product.images[0];
+                  // Pick the color-specific image when the variant has a color option.
+                  // Images are seeded with alt_text = "Product Name — ColorName".
+                  const variantColor = (item.variant.options as { color?: string } | null)?.color;
+                  const image = variantColor
+                    ? (product.images.find((img) =>
+                        img.alt_text?.toLowerCase().includes(variantColor.toLowerCase())
+                      ) ?? product.images[0])
+                    : product.images[0];
                   const isPending = pendingVariants.has(item.variant_id);
 
                   return (
