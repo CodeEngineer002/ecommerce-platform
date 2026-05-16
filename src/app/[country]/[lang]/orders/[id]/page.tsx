@@ -1,13 +1,15 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { OrderActions } from "@/components/orders/order-actions";
+import { OrderTimeline } from "@/components/orders/order-timeline";
 import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { isOrderCancellable } from "@/domain/order/order-state-machine";
+import { ORDER_JOURNEY } from "@/domain/order/order-journey";
 import { isValidCountry, isValidLanguage, type CountryCode, type LanguageCode } from "@/lib/i18n/config";
 import { REGION_CONFIGS } from "@/lib/i18n/region-config";
 import { buildLocaleRoutes, type LocaleParams } from "@/lib/i18n/routing";
@@ -109,6 +111,13 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
         </div>
         <div className="flex items-center gap-3">
           <StatusBadge status={order.status} />
+          {/* Invoice download — direct link to PDF endpoint */}
+          <Button variant="outline" size="sm" asChild>
+            <a href={`/api/orders/${order.id}/invoice`} download>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Invoice
+            </a>
+          </Button>
           <OrderActions
             orderId={order.id}
             canCancel={canCancel}
@@ -125,18 +134,17 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <div>
                 <p className="font-medium">
-                  {typedFulfillment.carrier
-                    ? `Shipped via ${typedFulfillment.carrier}`
-                    : "Shipment tracking"}
+                  {typedFulfillment.carrier ? `Shipped via ${typedFulfillment.carrier}` : "Shipment tracking"}
                 </p>
                 <p className="text-muted-foreground">
-                  Tracking:{" "}
-                  <span className="font-mono">{typedFulfillment.tracking_number}</span>
+                  Tracking: <span className="font-mono">{typedFulfillment.tracking_number}</span>
                 </p>
                 {typedFulfillment.estimated_delivery && (
                   <p className="text-muted-foreground">
                     Estimated delivery:{" "}
-                    {new Date(typedFulfillment.estimated_delivery).toLocaleDateString()}
+                    {new Date(typedFulfillment.estimated_delivery).toLocaleDateString("en-IN", {
+                      day: "numeric", month: "short", year: "numeric",
+                    })}
                   </p>
                 )}
               </div>
@@ -156,16 +164,20 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
       {hasActiveReturn && (
         <Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
           <CardContent className="py-4 text-sm">
-            <p className="font-medium">Return request in progress</p>
+            <p className="font-medium">Return / Replacement in progress</p>
             <p className="text-muted-foreground">
-              Your return request is being processed. We will contact you shortly.
+              Your request is being processed. We will update you shortly.
             </p>
           </CardContent>
         </Card>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      {/* 3-column layout: items+returns+shipping | summary | timeline */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_280px_220px]">
+
+        {/* ── Left column ─────────────────────────────────────────── */}
+        <div className="space-y-6">
+
           {/* Items */}
           <Card>
             <CardHeader>
@@ -191,27 +203,35 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
             </CardContent>
           </Card>
 
-          {/* Return history */}
+          {/* Return requests detail */}
           {typedReturns.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Return Requests</CardTitle>
+                <CardTitle>Return / Replacement Requests</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                {typedReturns.map((r) => (
-                  <div key={r.id} className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-medium capitalize">{r.reason}</p>
-                      <p className="text-xs text-muted-foreground">{formatDate(r.created_at)}</p>
+              <CardContent className="space-y-4 text-sm">
+                {typedReturns.map((r) => {
+                  const returnJourney = ORDER_JOURNEY[r.status as keyof typeof ORDER_JOURNEY];
+                  return (
+                    <div key={r.id} className="rounded-lg border p-3 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium capitalize">{r.reason}</p>
+                        <StatusBadge status={r.status} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Submitted on {formatDate(r.created_at)}
+                      </p>
+                      {returnJourney?.hint && (
+                        <p className="text-xs text-muted-foreground">{returnJourney.hint}</p>
+                      )}
                     </div>
-                    <StatusBadge status={r.status} />
-                  </div>
-                ))}
+                  );
+                })}
               </CardContent>
             </Card>
           )}
 
-          {/* Shipping */}
+          {/* Shipping address */}
           <Card>
             <CardHeader>
               <CardTitle>Shipping Address</CardTitle>
@@ -221,15 +241,13 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
               {shipping.phone && <p>{shipping.phone}</p>}
               <p>{shipping.address_line1}</p>
               {shipping.address_line2 && <p>{shipping.address_line2}</p>}
-              <p>
-                {shipping.city}, {shipping.state} – {shipping.postal_code}
-              </p>
+              <p>{shipping.city}, {shipping.state} – {shipping.postal_code}</p>
               <p>{shipping.country}</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Order summary */}
+        {/* ── Middle column: Order summary ─────────────────────────── */}
         <Card className="h-fit">
           <CardHeader>
             <CardTitle>Order Summary</CardTitle>
@@ -262,19 +280,19 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
               <>
                 <Separator />
                 <div className="space-y-1">
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between">
                     <span className="text-muted-foreground">Payment Mode</span>
-                    <span className="font-medium">
+                    <span className="font-medium text-right">
                       {order.payment.provider === "cod"
                         ? "Cash on Delivery"
                         : order.payment.provider === "stripe"
-                          ? "Credit / Debit Card"
+                          ? "Card"
                           : order.payment.provider === "razorpay"
-                            ? "Razorpay (UPI / Cards)"
+                            ? "Razorpay"
                             : order.payment.provider}
                     </span>
                   </div>
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between">
                     <span className="text-muted-foreground">Payment Status</span>
                     <span
                       className={`font-medium capitalize ${
@@ -293,6 +311,17 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
             )}
           </CardContent>
         </Card>
+
+        {/* ── Right column: Status Timeline ────────────────────────── */}
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle className="text-sm">Order Progress</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <OrderTimeline status={order.status} />
+          </CardContent>
+        </Card>
+
       </div>
     </div>
   );

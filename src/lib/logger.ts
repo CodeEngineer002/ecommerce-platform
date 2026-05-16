@@ -168,6 +168,23 @@ export const logger = {
 
   error(message: string, error: unknown = null, context: LogContext = {}): void {
     emit(buildEntry("error", message, error, context, context.channel ?? "app"));
+
+    // Forward to Sentry when DSN is configured (production observability)
+    if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+      try {
+        // Dynamic import keeps this tree-shakeable in test environments
+        void import("@sentry/nextjs").then(({ captureException, withScope }) => {
+          const exception = error instanceof Error ? error : new Error(message);
+          withScope((scope) => {
+            scope.setLevel("error");
+            scope.setContext("log", { message, ...context });
+            captureException(exception);
+          });
+        });
+      } catch {
+        // Never let Sentry reporting break application flow
+      }
+    }
   },
 
   /**

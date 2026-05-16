@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 import { DataTable, type ColumnDef } from "@/components/common/data-table";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   useAdminOrders,
@@ -46,12 +48,12 @@ const columns = (
   {
     header: "Order",
     cell: (o) => (
-      <>
-        <p className="font-mono font-medium">{o.order_number}</p>
+      <Link href={`/admin/orders/${o.id}`} className="hover:underline">
+        <p className="font-mono font-medium text-primary">{o.order_number}</p>
         <p className="text-xs text-muted-foreground">
           {o.items.length} item{o.items.length !== 1 ? "s" : ""}
         </p>
-      </>
+      </Link>
     ),
   },
   {
@@ -91,6 +93,15 @@ const columns = (
         </Select>
       );
     },
+  },
+  {
+    header: "Actions",
+    align: "center",
+    cell: (o) => (
+      <Button variant="outline" size="sm" asChild>
+        <Link href={`/admin/orders/${o.id}`}>Details</Link>
+      </Button>
+    ),
   },
 ];
 

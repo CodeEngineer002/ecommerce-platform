@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 // ── Security Headers ──────────────────────────────────────────────────────────
 // Static headers applied to all routes via next.config.ts.
@@ -41,7 +42,7 @@ const nextConfig: NextConfig = {
   // Marking the package as a server external (loaded via Node require at
   // runtime) prevents the webpack bundling conflict while keeping
   // createBrowserClient available for actual browser bundles.
-  serverExternalPackages: ["@supabase/ssr"],
+  serverExternalPackages: ["@supabase/ssr", "@react-pdf/renderer"],
 
   images: {
     remotePatterns: [
@@ -72,4 +73,23 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // ── Sentry build-time options ─────────────────────────────────────────────
+  org:     process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+
+  silent: !process.env.SENTRY_AUTH_TOKEN,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  // Enable source-map upload when auth token present
+  widenClientFileUpload: Boolean(process.env.SENTRY_AUTH_TOKEN),
+
+  // Tunnel: avoids ad-blocker interference with Sentry events
+  tunnelRoute: "/monitoring",
+
+  // Webpack-scoped options (non-deprecated form)
+  webpack: {
+    autoInstrumentServerFunctions: true,
+    reactComponentAnnotation: { enabled: true },
+  },
+});

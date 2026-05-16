@@ -1,16 +1,11 @@
-import { Package } from "lucide-react";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { StatusBadge } from "@/components/common/status-badge";
-import { EmptyState } from "@/components/feedback/empty-state";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OrdersPageClient } from "@/components/orders/orders-page-client";
+import type { OrderCardData } from "@/components/orders/order-card";
 import { isValidCountry, isValidLanguage, type CountryCode, type LanguageCode } from "@/lib/i18n/config";
 import { REGION_CONFIGS } from "@/lib/i18n/region-config";
 import { buildLocaleRoutes, type LocaleParams } from "@/lib/i18n/routing";
 import { createClient } from "@/lib/supabase/server";
-import { formatDate, formatPrice } from "@/lib/utils";
 
 interface Props {
   params: Promise<{ country: string; lang: string }>;
@@ -30,63 +25,63 @@ export default async function LocaleOrdersPage({ params }: Props) {
 
   const countryKey = isValidCountry(country) ? (country as CountryCode) : "in";
   const { currencyCode, currencyLocale } = REGION_CONFIGS[countryKey];
-  const fmt = (amount: number) => formatPrice(amount, currencyCode, currencyLocale);
 
-  const { data: ordersData } = await supabase
+  // Fetch orders + items + return requests in one go
+  const { data: ordersRaw } = await supabase
     .from("orders")
-    .select("*, items:order_items(*), payments(*)")
+    .select(`
+      id,
+      order_number,
+      status,
+      created_at,
+      total,
+      subtotal,
+      shipping,
+      tax,
+      discount,
+      items:order_items (
+        id,
+        product_name,
+        variant_name,
+        quantity,
+        total
+      ),
+      returns:order_returns (
+        id,
+        status,
+        created_at
+      )
+    `)
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
-  const orders = ordersData ?? [];
+
+  // Check which orders have tracking info
+  const orderIds = (ordersRaw ?? []).map((o) => o.id);
+  const { data: fulfillments } = orderIds.length > 0
+    ? await supabase
+        .from("order_fulfillments")
+        .select("order_id, tracking_number")
+        .in("order_id", orderIds)
+    : { data: [] };
+
+  const trackedSet = new Set((fulfillments ?? []).map((f) => f.order_id));
+
+  const orders: OrderCardData[] = (ordersRaw ?? []).map((o) => ({
+    ...(o as unknown as Omit<OrderCardData, "returns" | "hasTracking">),
+    returns:     (o.returns ?? []) as OrderCardData["returns"],
+    hasTracking: trackedSet.has(o.id),
+  }));
 
   return (
     <div className="container py-8">
-      <h1 className="mb-8 text-2xl font-bold">My Orders</h1>
-
-      {orders.length === 0 ? (
-        <EmptyState
-          icon={Package}
-          title="No orders yet"
-          description="Once you place an order, it will appear here."
-          action={{ label: "Start Shopping", href: routes.products }}
-        />
-      ) : (
-        <div className="space-y-4">
-          {orders.map((order) => (
-            <Card key={order.id}>
-              <CardHeader className="flex-row items-center justify-between pb-2">
-                <div>
-                  <CardTitle className="text-base">Order #{order.order_number}</CardTitle>
-                  <p className="text-xs text-muted-foreground">{formatDate(order.created_at)}</p>
-                </div>
-                <StatusBadge status={order.status} />
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="divide-y">
-                  {order.items.map((item) => (
-                    <div key={item.id} className="flex justify-between py-2 text-sm">
-                      <div>
-                        <p className="font-medium">{item.product_name}</p>
-                        {item.variant_name && (
-                          <p className="text-xs text-muted-foreground">{item.variant_name}</p>
-                        )}
-                        <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
-                      </div>
-                      <span>{fmt(item.total)}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between border-t pt-2">
-                  <span className="font-semibold">Total: {fmt(order.total)}</span>
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href={routes.order(order.id)}>View Details</Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      <h1 className="mb-6 text-2xl font-bold">My Orders</h1>
+      <OrdersPageClient
+        orders={orders}
+        currencyCode={currencyCode}
+        currencyLocale={currencyLocale}
+        ordersBasePath={`/${country}/${lang}/orders`}
+        productsHref={routes.products}
+      />
     </div>
   );
 }

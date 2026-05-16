@@ -51,8 +51,10 @@ export function buildCspWithNonce(nonce: string): string {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com",
     "font-src 'self' data:",
-    "connect-src 'self' https://*.supabase.co https://api.stripe.com https://checkout.razorpay.com",
+    "connect-src 'self' https://*.supabase.co https://api.stripe.com https://checkout.razorpay.com https://*.sentry.io https://o4511399426916352.ingest.de.sentry.io",
     "frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.razorpay.com",
+    // Sentry Session Replay uses a Web Worker loaded via blob: URL
+    "worker-src blob:",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

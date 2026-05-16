@@ -2,6 +2,7 @@ import { CartDrawer } from "@/components/ecommerce/cart-drawer";
 import { Footer } from "@/components/layout/footer";
 import { Navbar } from "@/components/layout/navbar";
 import { NavigationOverlay } from "@/components/ui/navigation-overlay";
+import { StorefrontErrorBoundary } from "@/components/common/storefront-error-boundary";
 import { CartHydrationProvider } from "@/features/cart/cart-hydration-provider";
 import { UserHydrationProvider } from "@/features/auth/user-hydration-provider";
 import { createClient } from "@/lib/supabase/server";
@@ -30,7 +31,9 @@ export default async function StorefrontLayout({ children }: { children: React.R
       <CartHydrationProvider>
         <div className="flex min-h-screen flex-col">
           <Navbar user={navUser} />
-          <main className="flex-1">{children}</main>
+          <main className="flex-1">
+            <StorefrontErrorBoundary>{children}</StorefrontErrorBoundary>
+          </main>
           <Footer />
           <CartDrawer />
           <NavigationOverlay />
