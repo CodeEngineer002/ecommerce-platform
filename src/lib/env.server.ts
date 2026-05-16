@@ -32,6 +32,8 @@ const serverEnvSchema = z.object({
   // Leave unset for local dev (falls back to in-memory limiter automatically)
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+  // Cron job secret — used to authenticate /api/jobs/* endpoints
+  CRON_SECRET: z.string().optional(),
 });
 
 function validateServerEnv() {
@@ -47,6 +49,7 @@ function validateServerEnv() {
     SUPABASE_DB_URL: process.env.SUPABASE_DB_URL,
     UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
     UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+    CRON_SECRET: process.env.CRON_SECRET,
   });
 
   if (!result.success) {

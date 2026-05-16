@@ -51,6 +51,7 @@ export const PATCH = withApiHandler(
       p_new_status: status,
       p_changed_by: user.id,
       p_reason:     reason ?? undefined,
+      p_source:     "admin_override",
     });
 
     if (error) {

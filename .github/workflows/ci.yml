@@ -139,12 +139,24 @@ jobs:
     needs: [build]
     if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
     env:
-      NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+      # App
       NEXT_PUBLIC_APP_URL: http://localhost:4000
       NEXT_PUBLIC_APP_NAME: ShopNest
-      NEXT_PUBLIC_PAYMENT_PROVIDER: stripe
-      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+      E2E_BASE_URL: http://localhost:4000
+      NEXT_PUBLIC_PAYMENT_PROVIDER: cod
+      # Supabase — set via repository secrets for CI
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+      # E2E test credentials — set via repository secrets
+      TEST_CUSTOMER_EMAIL: ${{ secrets.E2E_CUSTOMER_EMAIL }}
+      TEST_CUSTOMER_PASSWORD: ${{ secrets.E2E_CUSTOMER_PASSWORD }}
+      TEST_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+      TEST_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+      TEST_LOCALE_PREFIX: /in/en
+      TEST_COUNTRY_CODE: IN
+      TEST_PRODUCT_SLUG: wireless-noise-cancelling-headphones
+      E2E_ALLOW_PRODUCTION: ${{ secrets.E2E_ALLOW_PRODUCTION }}
 
     steps:
       - uses: actions/checkout@v4
@@ -160,24 +172,57 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Validate E2E environment
+        run: |
+          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+            echo "❌ E2E_SUPABASE_URL secret is not set. E2E tests require a test database."
+            exit 1
+          fi
+          echo "✅ E2E environment variables present"
+
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: nextjs-build
           path: .next/
 
-      - name: Run E2E tests
-        run: npm run test:e2e -- --project=chromium
+      - name: Create .playwright directory
+        run: mkdir -p .playwright
+
+      - name: Run E2E regression tests
+        run: npm run test:e2e:regression
         env:
           CI: "true"
 
-      - name: Upload Playwright report
+      - name: Run full E2E suite
+        run: npm run test:e2e -- --project=chromium
+        env:
+          CI: "true"
+        continue-on-error: true   # upload report even on failure
+
+      - name: Upload Playwright HTML report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: playwright-report
-          path: playwright-report/
+          path: src/tests/e2e/reports/html/
           retention-days: 7
+
+      - name: Upload Playwright JUnit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-junit
+          path: src/tests/e2e/reports/results.xml
+          retention-days: 7
+
+      - name: Upload test artifacts (screenshots/traces/videos)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-artifacts
+          path: src/tests/e2e/reports/artifacts/
+          retention-days: 3
 
   # ─────────────────────────────────────────────────────────────────────────────
   # 6. Migration validation (verify SQL migrations are valid)

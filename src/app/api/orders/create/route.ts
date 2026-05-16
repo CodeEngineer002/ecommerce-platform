@@ -28,6 +28,9 @@ const orderRequestSchema = z.object({
   // razorpay excluded until webhook handler is implemented
   paymentProvider: z.enum(["stripe", "cod"]),
   notes: z.string().max(500).optional(),
+  // cartId — used to convert the specific cart used at checkout,
+  // preventing stale-cart / double-order issues.
+  cartId: z.string().uuid().optional(),
 });
 
 // ── Query result types ────────────────────────────────────────────────────────
@@ -70,7 +73,7 @@ export const POST = withRateLimit(
       );
     }
 
-    const { cartItems, shippingAddress, billingAddress, couponCode, paymentProvider, notes } =
+    const { cartItems, shippingAddress, billingAddress, couponCode, paymentProvider, notes, cartId } =
       parsed.data;
 
     const db = createServiceClient();
@@ -183,24 +186,32 @@ export const POST = withRateLimit(
       throw new Error(msg || "Failed to create order");
     }
 
-    // ── Convert the user's active cart ────────────────────────────────────────
-    const { data: activeCart } = await db
-      .from("carts")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (activeCart) {
-      await db.from("cart_items").delete().eq("cart_id", activeCart.id);
-      const { error: cartConvertError } = await db
+    // ── Convert the specific cart used at checkout ───────────────────────────
+    // Prefer the explicit cartId sent by the client. If not provided, fall back
+    // to the most recently updated active cart (legacy behaviour).
+    let cartToConvertId: string | null = cartId ?? null;
+    if (!cartToConvertId) {
+      const { data: fallbackCart } = await db
         .from("carts")
-        .update({ status: "converted" })
-        .eq("id", activeCart.id);
-      if (cartConvertError) {
-        console.error("[orders/create] cart conversion failed:", cartConvertError.message);
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      cartToConvertId = fallbackCart?.id ?? null;
+    }
+
+    if (cartToConvertId) {
+      const [, cartUpdateResult] = await Promise.all([
+        db.from("cart_items").delete().eq("cart_id", cartToConvertId),
+        db.from("carts")
+          .update({ status: "converted", converted_to_order_id: orderId as string })
+          .eq("id", cartToConvertId)
+          .eq("status", "active"),  // only convert if still active (race guard)
+      ]);
+      if (cartUpdateResult.error) {
+        console.error("[orders/create] cart conversion failed:", cartUpdateResult.error.message);
       }
     }
 
@@ -228,11 +239,22 @@ export const POST = withRateLimit(
           p_new_status: "confirmed",
           p_changed_by: user.id,
           p_reason: "Cash on delivery order confirmed — awaiting cash collection at delivery",
+          p_source: "customer_action",
         }),
         // Mark payment as cod_pending_collection (not succeeded — cash not yet collected)
         db.from("payments")
           .update({ status: "cod_pending_collection" })
           .eq("id", payment!.id),
+        // Write order event for observability / admin timeline
+        db.from("order_events").insert({
+          order_id:    orderId as string,
+          event_type:  "order_confirmed",
+          actor_id:    user.id,
+          actor_type:  "customer",
+          description: "COD order placed and confirmed — awaiting cash collection at delivery",
+          metadata:    { payment_method: "cod", total: pricing.total },
+          source:      "customer_action",
+        }),
       ]);
 
       // ── Fire-and-forget confirmation email ─────────────────────────────────
@@ -292,14 +314,25 @@ export const POST = withRateLimit(
       return apiSuccess(responseBody);
     }
 
-    // ── Online payment: create payment intent ─────────────────────────────────
+    // ── Online payment: create payment intent + log order event ──────────────
     const provider = getPaymentProvider(paymentProvider);
-    const intent = await provider.createIntent({
-      orderId: orderId as string,
-      amount: pricing.total,
-      currency: CURRENCY,
-      metadata: { order_id: orderId as string },
-    });
+    const [intent] = await Promise.all([
+      provider.createIntent({
+        orderId: orderId as string,
+        amount: pricing.total,
+        currency: CURRENCY,
+        metadata: { order_id: orderId as string },
+      }),
+      db.from("order_events").insert({
+        order_id:    orderId as string,
+        event_type:  "order_created",
+        actor_id:    user.id,
+        actor_type:  "customer",
+        description: `Order placed via ${paymentProvider} — payment intent pending`,
+        metadata:    { payment_method: paymentProvider, total: pricing.total },
+        source:      "customer_action",
+      }),
+    ]);
 
     await db
       .from("payments")

@@ -2581,6 +2581,7 @@ export type Database = {
           id: string
           metadata: Json
           order_id: string
+          source: string
         }
         Insert: {
           actor_id?: string | null
@@ -2591,6 +2592,7 @@ export type Database = {
           id?: string
           metadata?: Json
           order_id: string
+          source?: string
         }
         Update: {
           actor_id?: string | null
@@ -2601,10 +2603,70 @@ export type Database = {
           id?: string
           metadata?: Json
           order_id?: string
+          source?: string
         }
         Relationships: [
           {
             foreignKeyName: "order_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_exceptions: {
+        Row: {
+          created_at: string
+          description: string | null
+          detected_at: string
+          exception_type: string
+          id: string
+          metadata: Json
+          order_id: string
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          detected_at?: string
+          exception_type: string
+          id?: string
+          metadata?: Json
+          order_id: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          detected_at?: string
+          exception_type?: string
+          id?: string
+          metadata?: Json
+          order_id?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_exceptions_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
@@ -2837,6 +2899,7 @@ export type Database = {
           id: string
           order_id: string
           reason: string | null
+          source: string
           to_status: Database["public"]["Enums"]["order_status"]
         }
         Insert: {
@@ -2846,6 +2909,7 @@ export type Database = {
           id?: string
           order_id: string
           reason?: string | null
+          source?: string
           to_status: Database["public"]["Enums"]["order_status"]
         }
         Update: {
@@ -2855,6 +2919,7 @@ export type Database = {
           id?: string
           order_id?: string
           reason?: string | null
+          source?: string
           to_status?: Database["public"]["Enums"]["order_status"]
         }
         Relationships: [
@@ -4800,6 +4865,7 @@ export type Database = {
         Args: { p_admin_id: string; p_note?: string; p_return_id: string }
         Returns: undefined
       }
+      auto_queue_confirmed_orders: { Args: never; Returns: number }
       available_inventory: { Args: { p_variant_id: string }; Returns: number }
       available_stock_for_country: {
         Args: { p_country_id: string; p_variant_id: string }
@@ -4866,6 +4932,7 @@ export type Database = {
         }
         Returns: string
       }
+      detect_stuck_orders: { Args: never; Returns: number }
       expire_abandoned_carts: { Args: never; Returns: undefined }
       generate_order_number: { Args: never; Returns: string }
       get_or_create_user_cart: {
@@ -4888,6 +4955,7 @@ export type Database = {
         Returns: undefined
       }
       product_avg_rating: { Args: { p_product_id: string }; Returns: number }
+      reconcile_cod_pending_collection: { Args: never; Returns: number }
       record_inventory_movement: {
         Args: {
           p_actor_id: string
@@ -4958,15 +5026,26 @@ export type Database = {
         }
         Returns: undefined
       }
-      update_order_status: {
-        Args: {
-          p_changed_by: string
-          p_new_status: Database["public"]["Enums"]["order_status"]
-          p_order_id: string
-          p_reason?: string
-        }
-        Returns: undefined
-      }
+      update_order_status:
+        | {
+            Args: {
+              p_changed_by?: string
+              p_new_status: Database["public"]["Enums"]["order_status"]
+              p_order_id: string
+              p_reason?: string
+              p_source?: string
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_changed_by: string
+              p_new_status: Database["public"]["Enums"]["order_status"]
+              p_order_id: string
+              p_reason?: string
+            }
+            Returns: undefined
+          }
     }
     Enums: {
       cart_status:

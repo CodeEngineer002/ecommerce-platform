@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle, Loader2, ShoppingBag } from "lucide-react";
 import Image from "next/image";
 import { useParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "react-hot-toast";
 
@@ -106,8 +106,12 @@ export default function CheckoutPage() {
   const { isLoading: cartLoading } = useServerCart();
   const serverCart = useCartStore((s) => s.serverCart);
   const items      = useCartStore((s) => s.items);
+  const serverCartId = useCartStore((s) => s.serverCartId);
   const { user } = useUserStore();
   const { mutate: createOrder, isPending } = useCreateOrder();
+  // Sync guard — prevents a second tap/click from firing a second mutation
+  // before React re-renders with isPending=true (async state timing gap).
+  const submittingRef = useRef(false);
   const fmt = useFormatPrice();
 
   const params = useParams<{ country?: string }>();
@@ -176,16 +180,23 @@ export default function CheckoutPage() {
   // ── Place Order ────────────────────────────────────────────────────────────
 
   async function handlePlaceOrder(data: CheckoutExtrasData) {
+    // Synchronous double-submit guard (React isPending has an async re-render gap)
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+
     if (!selectedShipping) {
       toast.error("Please select a shipping address");
+      submittingRef.current = false;
       return;
     }
     if (!shippingValidated) {
       toast.error("Shipping address is still being verified — please wait");
+      submittingRef.current = false;
       return;
     }
     if (shippingErrors) {
       toast.error("Shipping address has validation errors");
+      submittingRef.current = false;
       return;
     }
 
@@ -193,10 +204,12 @@ export default function CheckoutPage() {
     if (!billingSameAsShipping) {
       if (!selectedBilling) {
         toast.error("Please select a billing address");
+        submittingRef.current = false;
         return;
       }
       if (!billingValidated || billingErrors) {
         toast.error("Billing address has validation errors");
+        submittingRef.current = false;
         return;
       }
     }
@@ -215,14 +228,20 @@ export default function CheckoutPage() {
       };
     }
 
-    createOrder({
-      cartItems:        items,
-      shippingAddress:  toAddressPayload(selectedShipping),
-      billingAddress:   toAddressPayload(billingAddress!),
-      couponCode:       data.couponCode,
-      paymentProvider:  data.paymentProvider,
-      notes:            data.notes,
-    });
+    createOrder(
+      {
+        cartItems:        items,
+        shippingAddress:  toAddressPayload(selectedShipping),
+        billingAddress:   toAddressPayload(billingAddress!),
+        couponCode:       data.couponCode,
+        paymentProvider:  data.paymentProvider,
+        notes:            data.notes,
+        cartId:           serverCartId ?? serverCart?.id ?? undefined,
+      },
+      {
+        onSettled: () => { submittingRef.current = false; },
+      },
+    );
   }
 
   // ── Block reason ──────────────────────────────────────────────────────────
@@ -450,7 +469,7 @@ export default function CheckoutPage() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">
                         {pricing.tax_label
-                          ? `${pricing.tax_label} (${Math.round(pricing.tax_rate * 100)}%)`
+                          ? `${pricing.tax_label} (${parseFloat((pricing.tax_rate * 100).toFixed(2))}%)`
                           : "Tax"}
                       </span>
                       <span>{fmt(pricing.estimated_tax)}</span>

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { SORT_OPTIONS } from "@/lib/constants";
+import { useFormatPrice } from "@/hooks/use-format-price";
 import type { Category, ProductFilters } from "@/types";
 
 interface FilterSidebarProps {
@@ -37,6 +38,9 @@ export function FilterSidebar({ filters, categories, onChange, onReset }: Filter
   const isPriceActive =
     priceRange[0] !== PRICE_MIN || priceRange[1] !== PRICE_MAX;
 
+  const fmt = useFormatPrice();
+  const formatPrice = (n: number) => fmt(n, { notation: "compact", maximumFractionDigits: 1 });
+
   function commitPrice(range: [number, number]) {
     onChange({
       ...filters,
@@ -44,11 +48,6 @@ export function FilterSidebar({ filters, categories, onChange, onReset }: Filter
       maxPrice: range[1] < PRICE_MAX ? range[1] : undefined,
       page: 1,
     });
-  }
-
-  function formatPrice(n: number): string {
-    if (n >= 1000) return `₹${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`;
-    return `₹${n}`;
   }
 
   return (

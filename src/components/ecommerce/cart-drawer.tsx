@@ -20,7 +20,12 @@ import { useNavLoadingStore } from "@/store/nav-loading-store";
 import { QuantitySelector } from "./quantity-selector";
 
 export function CartDrawer() {
-  const { isOpen, closeCart, items, subtotal } = useCartStore();
+  const { isOpen, closeCart, items, subtotal, serverCart } = useCartStore();
+  // Badge and drawer must agree on count — both read from serverCart.item_count
+  // when available. Legacy `items` lags behind on first mount (useCartHydration
+  // is skipped once serverCart is set), causing the split-brain badge "2" / drawer "(0)" bug.
+  const displayCount = serverCart?.item_count ?? items.reduce((s, i) => s + i.quantity, 0);
+  const isEmpty = displayCount === 0;
   const { mutate: removeItem } = useRemoveCartItem();
   const { mutate: updateQuantity } = useUpdateCartQuantity();
   const fmt = useFormatPrice();
@@ -75,11 +80,11 @@ export function CartDrawer() {
       <SheetContent side="right" className="flex w-full flex-col sm:max-w-md">
         <SheetHeader>
           <SheetTitle>
-            Shopping Cart ({items.reduce((s, i) => s + i.quantity, 0)})
+            Shopping Cart ({displayCount})
           </SheetTitle>
         </SheetHeader>
 
-        {items.length === 0 ? (
+        {isEmpty ? (
           <div className="flex flex-1 items-center justify-center">
             <EmptyState
               icon={ShoppingBag}

@@ -37,6 +37,13 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /playwright/.cache/
+/.playwright/                        # saved auth state files (customer.json, admin.json)
+/src/tests/e2e/reports/html/        # generated HTML reports
+/src/tests/e2e/reports/artifacts/   # test artifacts (screenshots, traces, videos)
+/src/tests/e2e/reports/results.xml  # JUnit XML (CI upload)
+
+# e2e env
+.env.e2e
 
 # supabase cli (local temp files — not needed in repo)
 supabase/.temp/

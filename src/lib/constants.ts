@@ -85,6 +85,7 @@ export const ROUTES = {
     editProduct:      (id: string) => `/admin/products/${id}/edit`,
     categories:       "/admin/categories",
     orders:           "/admin/orders",
+    orderExceptions:  "/admin/orders/exceptions",
     customers:        "/admin/customers",
     analytics:        "/admin/analytics",
     inventory:        "/admin/inventory",

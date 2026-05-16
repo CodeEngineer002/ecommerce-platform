@@ -38,9 +38,13 @@ export function useServerCart() {
   });
 
   // Sync into Zustand whenever React Query gets fresh data
+  // Guard: placeholderData: keepPreviousData makes result.data non-null even while
+  // the cache is empty (isPlaceholderData === true). Calling setServerCart with
+  // stale placeholder data would undo clearCart() after order placement before
+  // the fresh empty-cart response arrives.
   useEffect(() => {
-    if (result.data) setServerCart(result.data);
-  }, [result.data, setServerCart]);
+    if (result.data && !result.isPlaceholderData) setServerCart(result.data);
+  }, [result.data, result.isPlaceholderData, setServerCart]);
 
   return result;
 }

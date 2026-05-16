@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertTriangle,
   BarChart3,
   ChevronDown,
   FileText,
@@ -63,7 +64,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Commerce",
     permission: PERMISSIONS.ORDERS_READ,
     items: [
-      { href: ROUTES.admin.orders,    label: "Orders",     icon: ShoppingBag },
+      { href: ROUTES.admin.orders,           label: "Orders",     icon: ShoppingBag },
+      { href: ROUTES.admin.orderExceptions,    label: "Exceptions", icon: AlertTriangle, permission: PERMISSIONS.ORDERS_MANAGE },
       { href: ROUTES.admin.customers, label: "Customers",  icon: Users, permission: PERMISSIONS.CUSTOMERS_READ },
     ],
   },

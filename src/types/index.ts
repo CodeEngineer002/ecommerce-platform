@@ -100,6 +100,9 @@ export interface CheckoutPayload {
   couponCode?: string;
   paymentProvider: PaymentProvider;
   notes?: string;
+  /** The specific cart being checked out. Used by the API to convert exactly
+   *  this cart, preventing stale-cart and duplicate-order issues. */
+  cartId?: string;
 }
 
 export interface PriceBreakdown {
