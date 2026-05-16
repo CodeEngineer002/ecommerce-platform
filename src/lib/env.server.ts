@@ -21,7 +21,12 @@ const serverEnvSchema = z.object({
     .startsWith("whsec_", "STRIPE_WEBHOOK_SECRET must begin with whsec_")
     .optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
-  RESEND_API_KEY: z.string().optional(),
+  // Transactional email — Gmail SMTP via Nodemailer
+  GMAIL_USER: z.string().email().optional(),
+  GMAIL_APP_PASSWORD: z.string().optional(),
+  // Transactional email sender display name
+  STORE_FROM_EMAIL: z.string().email().optional(),
+  STORE_NAME: z.string().optional(),
   SUPABASE_DB_URL: z.string().optional(),
   // Upstash Redis — required for multi-instance / Vercel rate limiting
   // Leave unset for local dev (falls back to in-memory limiter automatically)
@@ -35,7 +40,10 @@ function validateServerEnv() {
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
     RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET,
-    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    GMAIL_USER: process.env.GMAIL_USER,
+    GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD,
+    STORE_FROM_EMAIL: process.env.STORE_FROM_EMAIL,
+    STORE_NAME: process.env.STORE_NAME,
     SUPABASE_DB_URL: process.env.SUPABASE_DB_URL,
     UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
     UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,

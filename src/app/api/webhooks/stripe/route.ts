@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
 import { serverEnv } from "@/lib/env.server";
+import { sendOrderConfirmationEmail } from "@/lib/email";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { Json } from "@/types/database.types";
 
@@ -64,6 +65,66 @@ export async function POST(request: Request) {
         p_reason: "Payment confirmed via Stripe webhook",
       }),
     ]);
+
+    // ── Fire-and-forget confirmation email ─────────────────────────────────
+    void (async () => {
+      try {
+        const { data: order } = await db
+          .from("orders")
+          .select(
+            "order_number, user_id, shipping_address, subtotal, discount, tax, shipping, total",
+          )
+          .eq("id", orderId)
+          .single();
+
+        if (!order?.user_id) return;
+
+        const [itemsResult, profileResult] = await Promise.all([
+          db
+            .from("order_items")
+            .select("product_name, quantity, unit_price")
+            .eq("order_id", orderId),
+          db.from("profiles").select("full_name, email").eq("id", order.user_id).maybeSingle(),
+        ]);
+
+        const addr = (order.shipping_address ?? {}) as Record<string, string>;
+        const toEmail = profileResult.data?.email ?? "";
+        if (!toEmail) return;
+
+        await sendOrderConfirmationEmail({
+          to: toEmail,
+          customerName: profileResult.data?.full_name ?? toEmail,
+          orderId,
+          order: {
+            order_number: order.order_number,
+            created_at: new Date().toISOString(),
+            items: (itemsResult.data ?? []).map((i) => ({
+              product_name: i.product_name,
+              quantity: i.quantity,
+              unit_price: i.unit_price,
+            })),
+            subtotal: order.subtotal,
+            discount: order.discount,
+            tax: order.tax,
+            shipping: order.shipping,
+            total: order.total,
+            currency_code: intent.currency.toUpperCase(),
+            payment_provider: "stripe",
+            shipping_address: {
+              full_name: addr.full_name ?? addr.first_name ?? "",
+              address_line1: addr.address_line1 ?? addr.line1 ?? "",
+              address_line2: addr.address_line2 ?? addr.line2 ?? null,
+              city: addr.city ?? "",
+              state: addr.state ?? null,
+              postal_code: addr.postal_code ?? addr.zip ?? null,
+              country: addr.country ?? "",
+            },
+          },
+        });
+      } catch (emailErr) {
+        console.error("[stripe/webhook] confirmation email failed:", emailErr);
+      }
+    })();
   }
 
   if (event.type === "payment_intent.payment_failed") {

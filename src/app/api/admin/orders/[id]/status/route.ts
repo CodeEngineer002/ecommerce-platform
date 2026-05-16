@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiSuccess, withApiHandler } from "@/lib/api";
 import { PERMISSIONS } from "@/lib/admin/permissions";
 import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
+import { sendOrderCancelledEmail, sendOrderShippedEmail } from "@/lib/email";
 import { NotFoundError, OrderStateError } from "@/lib/errors";
 
 const schema = z.object({
@@ -69,6 +70,50 @@ export const PATCH = withApiHandler(
       entityId: id,
       metadata: { status, reason },
     });
+
+    // ── Fire-and-forget emails for shipped / cancelled ────────────────────────
+    if (status === "shipped" || status === "cancelled") {
+      void (async () => {
+        try {
+          const { data: order } = await db
+            .from("orders")
+            .select("order_number, user_id, total")
+            .eq("id", id)
+            .single();
+
+          if (!order?.user_id) return;
+
+          const { data: profile } = await db
+            .from("profiles")
+            .select("full_name, email")
+            .eq("id", order.user_id)
+            .maybeSingle();
+
+          const toEmail = profile?.email ?? "";
+          if (!toEmail) return;
+          const customerName = profile?.full_name ?? toEmail;
+
+          if (status === "shipped") {
+            await sendOrderShippedEmail({
+              to: toEmail,
+              customerName,
+              orderId: id,
+              orderNumber: order.order_number,
+            });
+          } else {
+            await sendOrderCancelledEmail({
+              to: toEmail,
+              customerName,
+              orderId: id,
+              orderNumber: order.order_number,
+              reason: reason ?? null,
+            });
+          }
+        } catch (emailErr) {
+          console.error("[admin/orders/status] email failed:", emailErr);
+        }
+      })();
+    }
 
     return apiSuccess({ success: true });
   },

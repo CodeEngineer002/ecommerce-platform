@@ -6,6 +6,7 @@ import type { LineItem } from "@/domain/pricing/types";
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
 import { CURRENCY } from "@/lib/constants";
 import { AuthError, InventoryError, NotFoundError } from "@/lib/errors";
+import { sendOrderConfirmationEmail } from "@/lib/email";
 import { getPaymentProvider } from "@/lib/payment";
 import { perfMark } from "@/lib/perf";
 import { withRateLimit } from "@/lib/rate-limit";
@@ -227,6 +228,58 @@ export const POST = withRateLimit(
         }),
         db.from("payments").update({ status: "succeeded" }).eq("id", payment!.id),
       ]);
+
+      // ── Fire-and-forget confirmation email ─────────────────────────────────
+      void (async () => {
+        try {
+          const [orderRow, profileRow] = await Promise.all([
+            db
+              .from("orders")
+              .select("order_number, shipping_address, subtotal, discount, tax, shipping, total")
+              .eq("id", orderId as string)
+              .single(),
+            db
+              .from("profiles")
+              .select("full_name, email")
+              .eq("id", user.id)
+              .maybeSingle(),
+          ]);
+
+          const addr = (orderRow.data?.shipping_address ?? {}) as Record<string, string>;
+          await sendOrderConfirmationEmail({
+            to: profileRow.data?.email ?? user.email ?? "",
+            customerName: profileRow.data?.full_name ?? user.email ?? "Customer",
+            orderId: orderId as string,
+            order: {
+              order_number: orderRow.data?.order_number ?? "",
+              created_at: new Date().toISOString(),
+              items: lineItems.map((li) => ({
+                product_name: li.productName,
+                quantity: li.quantity,
+                unit_price: li.unitPrice,
+              })),
+              subtotal: orderRow.data?.subtotal ?? pricing.subtotal,
+              discount: orderRow.data?.discount ?? pricing.discount,
+              tax: orderRow.data?.tax ?? pricing.tax,
+              shipping: orderRow.data?.shipping ?? pricing.shipping,
+              total: orderRow.data?.total ?? pricing.total,
+              currency_code: CURRENCY,
+              payment_provider: "cod",
+              shipping_address: {
+                full_name: addr.full_name ?? addr.first_name ?? "",
+                address_line1: addr.address_line1 ?? addr.line1 ?? "",
+                address_line2: addr.address_line2 ?? addr.line2 ?? null,
+                city: addr.city ?? "",
+                state: addr.state ?? null,
+                postal_code: addr.postal_code ?? addr.zip ?? null,
+                country: addr.country ?? "",
+              },
+            },
+          });
+        } catch (emailErr) {
+          console.error("[orders/create] confirmation email failed:", emailErr);
+        }
+      })();
 
       const responseBody = { orderId };
       await storeIdempotencyResult(db, idempotencyKey, responseBody);

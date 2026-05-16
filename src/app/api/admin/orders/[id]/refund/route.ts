@@ -5,6 +5,7 @@ import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
 import { PERMISSIONS } from "@/lib/admin/permissions";
 import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
 import { CURRENCY } from "@/lib/constants";
+import { sendRefundProcessedEmail } from "@/lib/email";
 import { NotFoundError, RefundNotAllowedError } from "@/lib/errors";
 import { getPaymentProvider } from "@/lib/payment";
 
@@ -173,6 +174,41 @@ export const POST = withApiHandler(
         returnId: return_id ?? null,
       },
     });
+
+    // ── Fire-and-forget refund email ──────────────────────────────────────────
+    void (async () => {
+      try {
+        const { data: order } = await db
+          .from("orders")
+          .select("order_number, user_id")
+          .eq("id", orderId)
+          .single();
+
+        if (!order?.user_id) return;
+
+        const { data: profile } = await db
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", order.user_id)
+          .maybeSingle();
+
+        const toEmail = profile?.email ?? "";
+        if (!toEmail) return;
+
+        await sendRefundProcessedEmail({
+          to: toEmail,
+          customerName: profile?.full_name ?? toEmail,
+          orderId,
+          orderNumber: order.order_number,
+          refundAmount: calculation.totalRefund,
+          currencyCode: CURRENCY,
+          refundType: calculation.refundType,
+          reason,
+        });
+      } catch (emailErr) {
+        console.error("[admin/orders/refund] email failed:", emailErr);
+      }
+    })();
 
     return apiSuccess({
       refundId,
