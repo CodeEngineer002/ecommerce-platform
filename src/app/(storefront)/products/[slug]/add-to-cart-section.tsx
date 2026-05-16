@@ -1,6 +1,6 @@
 "use client";
 
-import { ShoppingCart } from "lucide-react";
+import { Loader2, ShoppingCart } from "lucide-react";
 import { Heart } from "lucide-react";
 import { useState } from "react";
 import { toast } from "react-hot-toast";
@@ -104,8 +104,19 @@ export function AddToCartSection({ product }: Props) {
           onClick={handleAddToCart}
           disabled={availableStock === 0 || !selectedVariant || isAddingToCart}
         >
-          <ShoppingCart className="h-5 w-5" />
-          {availableStock === 0 ? "Out of Stock" : "Add to Cart"}
+          {isAddingToCart ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Adding…
+            </>
+          ) : availableStock === 0 ? (
+            "Out of Stock"
+          ) : (
+            <>
+              <ShoppingCart className="h-5 w-5" />
+              Add to Cart
+            </>
+          )}
         </Button>
         <Button
           size="lg"

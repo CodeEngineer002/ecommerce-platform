@@ -1,6 +1,7 @@
 import { CartDrawer } from "@/components/ecommerce/cart-drawer";
 import { Footer } from "@/components/layout/footer";
 import { Navbar } from "@/components/layout/navbar";
+import { NavigationOverlay } from "@/components/ui/navigation-overlay";
 import { CartHydrationProvider } from "@/features/cart/cart-hydration-provider";
 import { UserHydrationProvider } from "@/features/auth/user-hydration-provider";
 import { createClient } from "@/lib/supabase/server";
@@ -32,6 +33,7 @@ export default async function StorefrontLayout({ children }: { children: React.R
           <main className="flex-1">{children}</main>
           <Footer />
           <CartDrawer />
+          <NavigationOverlay />
         </div>
       </CartHydrationProvider>
     </UserHydrationProvider>

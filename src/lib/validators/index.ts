@@ -99,12 +99,13 @@ export type ProductFormData = z.infer<typeof productSchema>;
 export type CategoryFormData = z.infer<typeof categorySchema>;
 export type CheckoutFormData = z.infer<typeof checkoutSchema>;
 
-/** Lightweight schema for the checkout page when addresses come from the address panel */
+/** Lightweight schema for the checkout page when addresses come from the address panel.
+ * Note: razorpay is intentionally excluded — webhook handler not implemented. */
 export const checkoutExtrasSchema = z.object({
   useSameAddress:  z.boolean().default(true),
   couponCode:      z.string().optional(),
   notes:           z.string().optional(),
-  paymentProvider: z.enum(["stripe", "razorpay", "cod"]),
+  paymentProvider: z.enum(["stripe", "cod"]),
 });
 export type CheckoutExtrasData = z.infer<typeof checkoutExtrasSchema>;
 export type ReviewFormData = z.infer<typeof reviewSchema>;

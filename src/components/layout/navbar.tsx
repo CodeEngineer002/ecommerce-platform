@@ -25,9 +25,9 @@ interface NavbarProps {
 
 const navLinks = [
   { href: ROUTES.products, label: "Shop" },
-  { href: "/categories/electronics", label: "Electronics" },
-  { href: "/categories/fashion", label: "Fashion" },
-  { href: "/sale", label: "Sale" },
+  { href: ROUTES.category("electronics"), label: "Electronics" },
+  { href: ROUTES.category("fashion"), label: "Fashion" },
+  { href: ROUTES.sale, label: "Sale" },
 ];
 
 export function Navbar({ user }: NavbarProps) {

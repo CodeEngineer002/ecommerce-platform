@@ -8,11 +8,24 @@ import { queryKeys } from "@/lib/query-keys";
 import { useCartStore } from "@/store/cart-store";
 import type { CartItemWithProduct } from "@/types";
 
+/**
+ * Enriches persisted localStorage items with full product details.
+ *
+ * IMPORTANT: This hook is a fallback for the cold-start case where
+ * the server cart has not yet been fetched. When serverCart is already
+ * populated, its items already contain all display data we need (CartItemDetail),
+ * so we skip the Supabase client query entirely to avoid a duplicate round-trip.
+ */
 export function useCartHydration() {
   const persistedItems = useCartStore((s) => s.persistedItems);
-  const setItems = useCartStore((s) => s.setItems);
+  const serverCart     = useCartStore((s) => s.serverCart);
+  const setItems       = useCartStore((s) => s.setItems);
 
   const variantIds = persistedItems.map((i) => i.variant_id);
+
+  // Skip client-side enrichment entirely when serverCart is available.
+  // serverCart.items already contain product name, image, prices.
+  const shouldFetch = variantIds.length > 0 && !serverCart;
 
   const { data: variants } = useQuery({
     queryKey: queryKeys.cart.variants(variantIds.slice().sort()),
@@ -25,11 +38,14 @@ export function useCartHydration() {
         .eq("is_active", true);
       return data ?? [];
     },
-    enabled: variantIds.length > 0,
+    enabled: shouldFetch,
     staleTime: 60_000,
   });
 
   useEffect(() => {
+    // If serverCart is available, nothing to do — checkout page reads serverCart.items directly.
+    if (serverCart) return;
+
     if (variantIds.length === 0) {
       setItems([]);
       return;
@@ -58,5 +74,6 @@ export function useCartHydration() {
       .filter((item): item is CartItemWithProduct => item !== null);
 
     setItems(hydrated);
-  }, [variants, persistedItems, setItems, variantIds.length]);
+  }, [variants, persistedItems, setItems, variantIds.length, serverCart]);
 }
+

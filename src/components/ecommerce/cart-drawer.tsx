@@ -1,8 +1,10 @@
 "use client";
 
-import { ShoppingBag, Trash2 } from "lucide-react";
+import { Loader2, ShoppingBag, Trash2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useTransition, useState, useCallback } from "react";
 
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
@@ -10,8 +12,9 @@ import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useRemoveCartItem, useUpdateCartQuantity } from "@/features/cart/hooks/use-cart-mutations";
 import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST } from "@/lib/constants";
-import { formatPrice } from "@/lib/utils";
+import { cn, formatPrice } from "@/lib/utils";
 import { useCartStore } from "@/store/cart-store";
+import { useNavLoadingStore } from "@/store/nav-loading-store";
 
 import { QuantitySelector } from "./quantity-selector";
 
@@ -19,6 +22,48 @@ export function CartDrawer() {
   const { isOpen, closeCart, items, subtotal } = useCartStore();
   const { mutate: removeItem } = useRemoveCartItem();
   const { mutate: updateQuantity } = useUpdateCartQuantity();
+  const router = useRouter();
+  const [isNavigating, startNavigation] = useTransition();
+  const startNavOverlay = useNavLoadingStore((s) => s.start);
+  // Track which variant IDs have a pending remove or quantity-update API call.
+  // Prevents double-clicks and gives per-row visual feedback.
+  const [pendingVariants, setPendingVariants] = useState<Set<string>>(new Set());
+
+  const markPending = useCallback((variantId: string) => {
+    setPendingVariants((prev) => new Set(prev).add(variantId));
+  }, []);
+  const unmarkPending = useCallback((variantId: string) => {
+    setPendingVariants((prev) => {
+      const next = new Set(prev);
+      next.delete(variantId);
+      return next;
+    });
+  }, []);
+
+  const handleRemove = useCallback(
+    (variantId: string) => {
+      if (pendingVariants.has(variantId)) return; // already in-flight
+      markPending(variantId);
+      removeItem(
+        { variantId },
+        { onSettled: () => unmarkPending(variantId) },
+      );
+    },
+    [pendingVariants, markPending, unmarkPending, removeItem],
+  );
+
+  const handleQtyChange = useCallback(
+    (variantId: string, quantity: number) => {
+      if (pendingVariants.has(variantId)) return;
+      markPending(variantId);
+      updateQuantity(
+        { variantId, quantity },
+        { onSettled: () => unmarkPending(variantId) },
+      );
+    },
+    [pendingVariants, markPending, unmarkPending, updateQuantity],
+  );
+
   const sub = subtotal();
   const shipping = sub >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
   const total = sub + shipping;
@@ -50,9 +95,16 @@ export function CartDrawer() {
                   const product = item.variant.product;
                   const price = item.variant.price ?? product.base_price;
                   const image = product.images[0];
+                  const isPending = pendingVariants.has(item.variant_id);
 
                   return (
-                    <li key={item.variant_id} className="flex gap-3 py-4">
+                    <li
+                      key={item.variant_id}
+                      className={cn(
+                        "flex gap-3 py-4 transition-opacity duration-150",
+                        isPending && "opacity-50 pointer-events-none",
+                      )}
+                    >
                       <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border bg-muted">
                         {image && (
                           <Image
@@ -78,7 +130,8 @@ export function CartDrawer() {
                         <div className="flex items-center justify-between">
                           <QuantitySelector
                             value={item.quantity}
-                            onChange={(q) => updateQuantity({ variantId: item.variant_id, quantity: q })}
+                            onChange={(q) => handleQtyChange(item.variant_id, q)}
+                            disabled={isPending}
                           />
                           <div className="text-right">
                             <p className="text-sm font-semibold">{formatPrice(price * item.quantity)}</p>
@@ -89,11 +142,16 @@ export function CartDrawer() {
                         </div>
                       </div>
                       <button
-                        onClick={() => removeItem({ variantId: item.variant_id })}
-                        className="self-start text-muted-foreground hover:text-destructive"
+                        onClick={() => handleRemove(item.variant_id)}
+                        disabled={isPending}
+                        className="self-start text-muted-foreground hover:text-destructive disabled:cursor-not-allowed"
                         aria-label="Remove item"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        {isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </button>
                     </li>
                   );
@@ -121,8 +179,26 @@ export function CartDrawer() {
                 <span>Total</span>
                 <span>{formatPrice(total)}</span>
               </div>
-              <Button asChild className="w-full" size="lg" onClick={closeCart}>
-                <Link href={ROUTES.checkout}>Proceed to Checkout</Link>
+              <Button
+                className="w-full gap-2"
+                size="lg"
+                disabled={isNavigating}
+                onClick={() => {
+                  startNavOverlay();
+                  startNavigation(() => {
+                    closeCart();
+                    router.push(ROUTES.checkout);
+                  });
+                }}
+              >
+                {isNavigating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Opening checkout…
+                  </>
+                ) : (
+                  "Proceed to Checkout"
+                )}
               </Button>
               <Button variant="outline" className="w-full" onClick={closeCart}>
                 Continue Shopping

@@ -17,10 +17,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useServerCart } from "@/features/cart/hooks/use-server-cart";
 import { CheckoutAddressPanel } from "@/features/checkout/components/checkout-address-panel";
 import { useCreateOrder } from "@/features/orders/hooks/use-orders";
-import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST, TAX_RATE } from "@/lib/constants";
+import { ROUTES } from "@/lib/constants";
 import { formatPrice } from "@/lib/utils";
 import { checkoutExtrasSchema, type CheckoutExtrasData } from "@/lib/validators";
 import { useCartStore } from "@/store/cart-store";
@@ -56,26 +57,63 @@ async function validateSavedAddress(
   return { valid: false, errors: body.error?.fields };
 }
 
+// ── Checkout skeleton ─────────────────────────────────────────────────────────
+
+function CheckoutSkeleton() {
+  return (
+    <div className="container py-8">
+      <Skeleton className="mb-8 h-8 w-40" />
+      <div className="grid gap-8 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Card className="p-6 space-y-3">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-28 w-full rounded-lg" />
+            <Skeleton className="h-28 w-full rounded-lg" />
+          </Card>
+          <Card className="p-6 space-y-3">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </Card>
+        </div>
+        <div className="h-fit space-y-4">
+          <Card className="p-6 space-y-3">
+            <Skeleton className="h-5 w-32" />
+            {[1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3 py-2">
+                <Skeleton className="h-10 w-10 rounded" />
+                <div className="flex-1 space-y-1">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+                <Skeleton className="h-4 w-14" />
+              </div>
+            ))}
+            <Skeleton className="h-px w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function CheckoutPage() {
   const { isLoading: cartLoading } = useServerCart();
-  const { items, subtotal, serverCart } = useCartStore();
+  const serverCart = useCartStore((s) => s.serverCart);
+  const items      = useCartStore((s) => s.items);
   const { user } = useUserStore();
   const { mutate: createOrder, isPending } = useCreateOrder();
 
   const params = useParams<{ country?: string }>();
   const activeCountryIso = params?.country ? countryIdToIso(params.country) : "IN";
 
-  // Pricing
-  const sub = serverCart ? serverCart.pricing.subtotal : subtotal();
-  const tax = serverCart
-    ? serverCart.pricing.estimated_tax
-    : Math.round(sub * TAX_RATE * 100) / 100;
-  const shipping = serverCart
-    ? serverCart.pricing.estimated_shipping
-    : sub >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
-  const total = serverCart ? serverCart.pricing.total : sub + tax + shipping;
+  // Pricing — always from serverCart when available (server-authoritative)
+  const pricing = serverCart?.pricing;
 
   // Address selection state
   const [selectedShipping, setSelectedShipping] = useState<CustomerAddress | null>(null);
@@ -89,7 +127,6 @@ export default function CheckoutPage() {
   const [billingValidating, setBillingValidating] = useState(false);
   const [billingErrors, setBillingErrors] = useState<Record<string, string[]> | null>(null);
 
-  // Payment/extras form (kept minimal — no address fields)
   const {
     register,
     handleSubmit,
@@ -103,70 +140,60 @@ export default function CheckoutPage() {
     },
   });
 
-  // ── Validate selected address server-side ───────────────────────────────
+  // ── Auto-validate on address select ───────────────────────────────────────
+  // Validates immediately when the user picks a saved address,
+  // eliminating the extra manual "Verify Address" click.
 
-  const validateShipping = useCallback(async () => {
-    if (!selectedShipping) return;
-    setShippingValidating(true);
+  const handleShippingSelect = useCallback(async (addr: CustomerAddress) => {
+    setSelectedShipping(addr);
+    setShippingValidated(false);
     setShippingErrors(null);
-    const result = await validateSavedAddress(selectedShipping, activeCountryIso.toLowerCase());
+    setShippingValidating(true);
+    const result = await validateSavedAddress(addr, activeCountryIso.toLowerCase());
     setShippingValidating(false);
     setShippingValidated(result.valid);
     if (!result.valid) setShippingErrors(result.errors ?? null);
-  }, [selectedShipping, activeCountryIso]);
+  }, [activeCountryIso]);
 
-  const validateBilling = useCallback(async () => {
-    if (!selectedBilling) return;
-    setBillingValidating(true);
+  const handleBillingSelect = useCallback(async (addr: CustomerAddress) => {
+    setSelectedBilling(addr);
+    setBillingValidated(false);
     setBillingErrors(null);
-    const result = await validateSavedAddress(selectedBilling, activeCountryIso.toLowerCase());
+    setBillingValidating(true);
+    const result = await validateSavedAddress(addr, activeCountryIso.toLowerCase());
     setBillingValidating(false);
     setBillingValidated(result.valid);
     if (!result.valid) setBillingErrors(result.errors ?? null);
-  }, [selectedBilling, activeCountryIso]);
+  }, [activeCountryIso]);
 
-  // ── Place Order ─────────────────────────────────────────────────────────
+  // ── Place Order ────────────────────────────────────────────────────────────
 
   async function handlePlaceOrder(data: CheckoutExtrasData) {
     if (!selectedShipping) {
       toast.error("Please select a shipping address");
       return;
     }
-
-    // Validate shipping
     if (!shippingValidated) {
-      const result = await validateSavedAddress(selectedShipping, activeCountryIso.toLowerCase());
-      if (!result.valid) {
-        setShippingErrors(result.errors ?? null);
-        setShippingValidated(false);
-        toast.error("Shipping address validation failed. Please check the address.");
-        return;
-      }
-      setShippingValidated(true);
-      setShippingErrors(null);
+      toast.error("Shipping address is still being verified — please wait");
+      return;
+    }
+    if (shippingErrors) {
+      toast.error("Shipping address has validation errors");
+      return;
     }
 
-    // Validate billing if separate
     const billingAddress = billingSameAsShipping ? selectedShipping : selectedBilling;
     if (!billingSameAsShipping) {
       if (!selectedBilling) {
         toast.error("Please select a billing address");
         return;
       }
-      if (!billingValidated) {
-        const result = await validateSavedAddress(selectedBilling, activeCountryIso.toLowerCase());
-        if (!result.valid) {
-          setBillingErrors(result.errors ?? null);
-          setBillingValidated(false);
-          toast.error("Billing address validation failed. Please check the address.");
-          return;
-        }
-        setBillingValidated(true);
-        setBillingErrors(null);
+      if (!billingValidated || billingErrors) {
+        toast.error("Billing address has validation errors");
+        return;
       }
     }
 
-    // Build address payloads from saved CustomerAddress
     function toAddressPayload(addr: CustomerAddress) {
       return {
         full_name:     [addr.first_name, addr.last_name].filter(Boolean).join(" "),
@@ -191,14 +218,15 @@ export default function CheckoutPage() {
     });
   }
 
-  // ── Blocked reason ──────────────────────────────────────────────────────
+  // ── Block reason ──────────────────────────────────────────────────────────
 
   function getBlockReason(): string | null {
     if (!selectedShipping) return "Select a shipping address to continue";
-    if (shippingValidating) return "Validating shipping address…";
+    if (shippingValidating) return "Verifying shipping address…";
     if (shippingErrors) return "Shipping address has validation errors";
+    if (!shippingValidated) return "Waiting for address verification…";
     if (!billingSameAsShipping && !selectedBilling) return "Select a billing address to continue";
-    if (billingValidating) return "Validating billing address…";
+    if (billingValidating) return "Verifying billing address…";
     if (billingErrors) return "Billing address has validation errors";
     return null;
   }
@@ -206,17 +234,17 @@ export default function CheckoutPage() {
   const blockReason = getBlockReason();
   const isBlocked   = !!blockReason || isPending;
 
-  // ── Loading / empty states ───────────────────────────────────────────────
+  // ── Loading / empty states ─────────────────────────────────────────────────
+  // Show skeleton while cart is loading — never a blank page.
 
   if (cartLoading && !serverCart) {
-    return (
-      <div className="container flex min-h-[40vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <CheckoutSkeleton />;
   }
 
-  if (items.length === 0 && !serverCart?.item_count) {
+  const cartItems = serverCart?.items ?? [];
+  const itemCount = serverCart?.item_count ?? items.length;
+
+  if (itemCount === 0 && !cartLoading) {
     return (
       <div className="container py-16">
         <EmptyState
@@ -228,46 +256,30 @@ export default function CheckoutPage() {
     );
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="container py-8">
       <h1 className="mb-8 text-2xl font-bold">Checkout</h1>
       <form onSubmit={handleSubmit(handlePlaceOrder)}>
         <div className="grid gap-8 lg:grid-cols-3">
-          {/* ── Left column ─────────────────────────────────────────────── */}
+          {/* ── Left column ────────────────────────────────────────────── */}
           <div className="space-y-6 lg:col-span-2">
 
-            {/* Shipping address panel */}
+            {/* Shipping address */}
             <Card className="p-6">
               <CheckoutAddressPanel
                 activeCountryIso={activeCountryIso}
                 title="Shipping Address"
                 selected={selectedShipping}
                 isValidated={shippingValidated}
-                onSelect={(addr) => {
-                  setSelectedShipping(addr);
-                  setShippingValidated(false);
-                  setShippingErrors(null);
-                }}
+                onSelect={handleShippingSelect}
                 onInvalidate={() => {
                   setShippingValidated(false);
                   setShippingErrors(null);
                 }}
               />
 
-              {/* Validate button (shown when address is selected but not yet validated) */}
-              {selectedShipping && !shippingValidated && !shippingValidating && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={validateShipping}
-                >
-                  Verify Address
-                </Button>
-              )}
               {shippingValidating && (
                 <p className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" /> Verifying address…
@@ -287,7 +299,7 @@ export default function CheckoutPage() {
               )}
             </Card>
 
-            {/* Billing — same as shipping */}
+            {/* Billing same as shipping checkbox */}
             <div className="flex items-center gap-2">
               <Checkbox
                 id="same-address"
@@ -303,7 +315,7 @@ export default function CheckoutPage() {
               <Label htmlFor="same-address">Billing address same as shipping</Label>
             </div>
 
-            {/* Billing address panel — only when different */}
+            {/* Separate billing address */}
             {!billingSameAsShipping && (
               <Card className="p-6">
                 <CheckoutAddressPanel
@@ -311,28 +323,13 @@ export default function CheckoutPage() {
                   title="Billing Address"
                   selected={selectedBilling}
                   isValidated={billingValidated}
-                  onSelect={(addr) => {
-                    setSelectedBilling(addr);
-                    setBillingValidated(false);
-                    setBillingErrors(null);
-                  }}
+                  onSelect={handleBillingSelect}
                   onInvalidate={() => {
                     setBillingValidated(false);
                     setBillingErrors(null);
                   }}
                 />
 
-                {selectedBilling && !billingValidated && !billingValidating && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-4"
-                    onClick={validateBilling}
-                  >
-                    Verify Billing Address
-                  </Button>
-                )}
                 {billingValidating && (
                   <p className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Verifying address…
@@ -372,10 +369,6 @@ export default function CheckoutPage() {
                         <RadioGroupItem value="stripe" id="stripe" />
                         <Label htmlFor="stripe">Credit / Debit Card (Stripe)</Label>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="razorpay" id="razorpay" />
-                        <Label htmlFor="razorpay">Razorpay (UPI / Cards / Wallets)</Label>
-                      </div>
                     </RadioGroup>
                   )}
                 />
@@ -398,21 +391,22 @@ export default function CheckoutPage() {
             />
           </div>
 
-          {/* ── Right column — Order summary ─────────────────────────────── */}
+          {/* ── Right column — Order summary ─────────────────────────── */}
           <div className="h-fit space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>Order Summary</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Items — rendered from serverCart for authoritative prices */}
                 <ul className="divide-y text-sm">
-                  {items.map((item) => (
+                  {cartItems.map((item) => (
                     <li key={item.variant_id} className="flex items-center gap-3 py-2">
                       <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
-                        {item.variant.product.images[0] && (
+                        {item.image_url && (
                           <Image
-                            src={item.variant.product.images[0].url}
-                            alt={item.variant.product.name}
+                            src={item.image_url}
+                            alt={item.product_name}
                             fill
                             className="object-cover"
                             sizes="40px"
@@ -420,40 +414,58 @@ export default function CheckoutPage() {
                         )}
                       </div>
                       <div className="flex-1 truncate">
-                        <p className="truncate font-medium">{item.variant.product.name}</p>
-                        {item.variant.name !== "Default" && (
-                          <p className="truncate text-xs text-muted-foreground">{item.variant.name}</p>
+                        <p className="truncate font-medium">{item.product_name}</p>
+                        {item.variant_name !== "Default" && (
+                          <p className="truncate text-xs text-muted-foreground">{item.variant_name}</p>
                         )}
                         <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                        {item.price_changed && (
+                          <p className="text-xs text-amber-600">Price updated</p>
+                        )}
                       </div>
-                      <span>
-                        {formatPrice((item.variant.price ?? item.variant.product.base_price) * item.quantity)}
-                      </span>
+                      <span>{formatPrice(item.current_unit_price * item.quantity)}</span>
                     </li>
                   ))}
                 </ul>
                 <Separator />
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span>{formatPrice(sub)}</span>
+                {pricing ? (
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span>{formatPrice(pricing.subtotal)}</span>
+                    </div>
+                    {pricing.discount > 0 && (
+                      <div className="flex justify-between text-green-600">
+                        <span>Discount</span>
+                        <span>−{formatPrice(pricing.discount)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Tax (18% GST)</span>
+                      <span>{formatPrice(pricing.estimated_tax)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Shipping</span>
+                      <span>{pricing.estimated_shipping === 0 ? "FREE" : formatPrice(pricing.estimated_shipping)}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Tax (18% GST)</span>
-                    <span>{formatPrice(tax)}</span>
+                ) : (
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-full" />
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Shipping</span>
-                    <span>{shipping === 0 ? "FREE" : formatPrice(shipping)}</span>
-                  </div>
-                </div>
+                )}
                 <Separator />
                 <div className="flex justify-between font-semibold">
                   <span>Total</span>
-                  <span>{formatPrice(total)}</span>
+                  {pricing ? (
+                    <span>{formatPrice(pricing.total)}</span>
+                  ) : (
+                    <Skeleton className="h-4 w-20" />
+                  )}
                 </div>
 
-                {/* Block reason */}
                 {blockReason && (
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -465,10 +477,10 @@ export default function CheckoutPage() {
                   type="submit"
                   className="w-full"
                   size="lg"
-                  loading={isPending || shippingValidating || billingValidating}
+                  loading={isPending}
                   disabled={isBlocked}
                 >
-                  Place Order
+                  {isPending ? "Creating your order…" : "Place Order"}
                 </Button>
               </CardContent>
             </Card>

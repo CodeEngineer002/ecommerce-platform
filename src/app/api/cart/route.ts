@@ -10,10 +10,13 @@ import { apiSuccess, withApiHandler } from "@/lib/api";
 import { buildGuestSessionCookieOptions } from "@/lib/cart/guest-session";
 import { resolveCartIdentity } from "@/lib/cart/resolve-identity";
 import { getOrCreateCart } from "@/domain/cart/cart-service";
+import { perfMark } from "@/lib/perf";
 
 export const GET = withApiHandler(async (request: Request) => {
+  const end = perfMark("GET /api/cart");
   const ctx = await resolveCartIdentity(request);
   const cart = await getOrCreateCart(ctx);
+  end();
 
   const response = apiSuccess(cart);
 

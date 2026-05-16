@@ -7,6 +7,7 @@ import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
 import { CURRENCY } from "@/lib/constants";
 import { AuthError, InventoryError, NotFoundError } from "@/lib/errors";
 import { getPaymentProvider } from "@/lib/payment";
+import { perfMark } from "@/lib/perf";
 import { withRateLimit } from "@/lib/rate-limit";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getTaxConfig } from "@/lib/tax/tax-service";
@@ -50,11 +51,12 @@ function getVariantPrice(variant: VariantRow): number {
 // ── Route handler ─────────────────────────────────────────────────────────────
 export const POST = withRateLimit(
   withApiHandler(async (request: Request) => {
+    const end = perfMark("POST /api/orders/create");
     const userClient = await createClient();
     const {
       data: { user },
     } = await userClient.auth.getUser();
-    if (!user) throw new AuthError();
+    if (!user) { end(); throw new AuthError(); }
 
     const body: unknown = await request.json();
     const parsed = orderRequestSchema.safeParse(body);
@@ -251,6 +253,7 @@ export const POST = withRateLimit(
       providerOrderId: intent.providerOrderId,
     };
     await storeIdempotencyResult(db, idempotencyKey, responseBody);
+    end();
     return apiSuccess(responseBody);
   }),
   // 5 orders/min per IP — prevents order spam and payment intent abuse

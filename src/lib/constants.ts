@@ -65,6 +65,7 @@ export const ROUTES = {
   products: "/products",
   product: (slug: string) => `/products/${slug}`,
   category: (slug: string) => `/categories/${slug}`,
+  sale: "/sale",
   cart: "/cart",
   checkout: "/checkout",
   orderSuccess: (id: string) => `/orders/${id}/success`,

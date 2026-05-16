@@ -10,6 +10,7 @@ import {
   getProductBySlug,
   getProducts,
   getRelatedProducts,
+  getSaleProducts,
   searchProducts,
 } from "../services/product.service";
 
@@ -65,5 +66,14 @@ export function useProductSearch(query: string) {
     // 30s: search results should stay fresh
     staleTime: 30 * 1000,
     gcTime: 2 * 60 * 1000,
+  });
+}
+
+export function useSaleProducts(page = 1) {
+  return useQuery({
+    queryKey: ["products", "sale", page],
+    queryFn: () => getSaleProducts({ page, pageSize: 12, sortBy: "newest" }),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 }

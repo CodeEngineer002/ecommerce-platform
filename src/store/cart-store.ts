@@ -30,6 +30,19 @@ interface CartState {
 
   // ── Server cart actions ────────────────────────────────────────────────────
   setServerCart: (cart: CartSummary | null) => void;
+  /**
+   * Optimistically removes an item from serverCart immediately.
+   * Recalculates item_count + pricing without waiting for the API.
+   * Call restoreServerCart() to roll back if the API fails.
+   */
+  removeItemFromServerCart: (variantId: string) => void;
+  /**
+   * Optimistically updates an item's quantity in serverCart immediately.
+   * Call restoreServerCart() to roll back if the API fails.
+   */
+  updateItemQtyInServerCart: (variantId: string, quantity: number) => void;
+  /** Instantly restores a previously saved serverCart snapshot (used in onError). */
+  restoreServerCart: (snapshot: CartSummary) => void;
 
   // ── Sync actions (legacy — optimistic updates while server syncs) ──────────
   setItems: (items: CartItemWithProduct[]) => void;
@@ -67,6 +80,62 @@ export const useCartStore = create<CartState>()(
             ? cart.items.map((i) => ({ variant_id: i.variant_id, quantity: i.quantity }))
             : get().persistedItems,
         }, false, "setServerCart"),
+
+      removeItemFromServerCart: (variantId) => {
+        const current = get().serverCart;
+        if (!current) return;
+        const removed = current.items.find((i) => i.variant_id === variantId);
+        if (!removed) return;
+        const lineTotal = removed.current_unit_price * removed.quantity;
+        const newItems = current.items.filter((i) => i.variant_id !== variantId);
+        set({
+          serverCart: {
+            ...current,
+            items: newItems,
+            item_count: Math.max(0, current.item_count - removed.quantity),
+            pricing: {
+              ...current.pricing,
+              subtotal: Math.max(0, current.pricing.subtotal - lineTotal),
+              total: Math.max(0, current.pricing.total - lineTotal),
+            },
+          },
+          persistedItems: newItems.map((i) => ({ variant_id: i.variant_id, quantity: i.quantity })),
+        }, false, "removeItemFromServerCart");
+      },
+
+      updateItemQtyInServerCart: (variantId, quantity) => {
+        const current = get().serverCart;
+        if (!current) return;
+        const item = current.items.find((i) => i.variant_id === variantId);
+        if (!item) return;
+        const qtyDiff = quantity - item.quantity;
+        const priceDiff = item.current_unit_price * qtyDiff;
+        const newItems = current.items.map((i) =>
+          i.variant_id === variantId ? { ...i, quantity } : i,
+        );
+        set({
+          serverCart: {
+            ...current,
+            items: newItems,
+            item_count: Math.max(0, current.item_count + qtyDiff),
+            pricing: {
+              ...current.pricing,
+              subtotal: Math.max(0, current.pricing.subtotal + priceDiff),
+              total: Math.max(0, current.pricing.total + priceDiff),
+            },
+          },
+          persistedItems: newItems.map((i) => ({ variant_id: i.variant_id, quantity: i.quantity })),
+        }, false, "updateItemQtyInServerCart");
+      },
+
+      restoreServerCart: (snapshot) => {
+        set({
+          serverCart: snapshot,
+          serverCartId: snapshot.id,
+          serverCartWarnings: snapshot.warnings ?? [],
+          persistedItems: snapshot.items.map((i) => ({ variant_id: i.variant_id, quantity: i.quantity })),
+        }, false, "restoreServerCart");
+      },
 
       // ── Legacy in-memory state ────────────────────────────────────────────
       items: [],

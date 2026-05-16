@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 
 import { queryKeys } from "@/lib/query-keys";
@@ -13,6 +13,12 @@ import type { CartSummary } from "@/domain/cart/types";
  * itemCount(), subtotal() and checkout pricing are always server-authoritative.
  *
  * Placed in CartHydrationProvider so it runs on every storefront page.
+ *
+ * Performance notes:
+ * - placeholderData: keepPreviousData → keeps existing cart visible while
+ *   a background refetch is in-flight; eliminates the blank-page flash.
+ * - staleTime: 60s → reduces redundant refetches across quick navigations.
+ * - refetchOnWindowFocus: true → re-validates on return from payment provider.
  */
 export function useServerCart() {
   const setServerCart = useCartStore((s) => s.setServerCart);
@@ -25,10 +31,10 @@ export function useServerCart() {
       const { data } = (await res.json()) as { data: CartSummary };
       return data;
     },
-    // Cart prices can change; re-validate every 30 s
-    staleTime: 30_000,
+    staleTime: 60_000,         // was 30s; 60s is safe — mutations still invalidate immediately
     gcTime: 5 * 60_000,
     refetchOnWindowFocus: true,
+    placeholderData: keepPreviousData, // keep previous cart data visible during refetch
   });
 
   // Sync into Zustand whenever React Query gets fresh data
@@ -38,3 +44,4 @@ export function useServerCart() {
 
   return result;
 }
+

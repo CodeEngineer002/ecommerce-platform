@@ -139,6 +139,32 @@ async function seed() {
 
   console.log("Inserted variants and inventory");
 
+  // Sale prices — add compare_at prices for ELEC-001 and FASH-001 on the default price list
+  // This makes these products appear on the /sale page.
+  const { data: priceList } = await supabase
+    .from("price_lists")
+    .select("id")
+    .eq("is_default", true)
+    .single();
+
+  if (priceList) {
+    const elec001 = products.find((p) => p.sku === "ELEC-001");
+    const fash001 = products.find((p) => p.sku === "FASH-001");
+
+    if (elec001 && fash001) {
+      await supabase.from("product_prices").upsert(
+        [
+          // Headphones: ₹8,999 sale price, ₹12,999 compare_at (31% off)
+          { price_list_id: priceList.id, product_id: elec001.id, amount: 8999, compare_at: 12999 },
+          // T-Shirt: ₹599 sale price, ₹799 compare_at (25% off)
+          { price_list_id: priceList.id, product_id: fash001.id, amount: 599, compare_at: 799 },
+        ],
+        { onConflict: "price_list_id,product_id" },
+      );
+      console.log("Inserted sale prices");
+    }
+  }
+
   // Homepage sections
   await supabase.from("homepage_sections").insert([
     {

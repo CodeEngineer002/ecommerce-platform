@@ -73,6 +73,8 @@ export interface ProductFilters {
   tags?: string[];
   search?: string;
   isFeatured?: boolean;
+  /** When true, only return products that have at least one variant with a compare_at price set */
+  onSale?: boolean;
   sortBy?: "price_asc" | "price_desc" | "newest" | "name_asc" | "rating";
   page?: number;
   pageSize?: number;

@@ -24,7 +24,7 @@
       "title": "Order Placement Flow",
       "trigger": "Customer submits checkout form",
       "steps": [
-        "POST /api/orders/create with cartItems, addresses, paymentProvider, couponCode",
+        "POST /api/orders/create with cartItems, addresses, paymentProvider (stripe | cod), couponCode",
         "buildCheckoutSummary(): validates cart items (re-fetches prices from DB)",
         "buildCheckoutSummary(): validates coupon (soft check — usage, dates, minimum)",
         "buildCheckoutSummary(): getTaxConfig(countryCode) → region-specific rates",
@@ -43,7 +43,8 @@
         "P0003": "Coupon limit exceeded → 409, remove coupon, show message",
         "P0004": "Coupon already used → 409, remove coupon, show message",
         "payment_failed": "Order cancelled, inventory reserved released"
-      }
+      },
+      "disabled": "razorpay — webhook handler not implemented; excluded from orderRequestSchema and checkoutExtrasSchema"
     },
     "cart_merge": {
       "title": "Guest-to-Authenticated Cart Merge",
@@ -102,17 +103,19 @@
     },
     "address_validation": {
       "title": "Address Validation at Checkout",
-      "trigger": "Customer enters shipping address",
+      "trigger": "Customer selects a saved address on the checkout page",
       "steps": [
-        "Client-side: quick format check (postal code regex)",
+        "Address panel onSelect fires handleShippingSelect / handleBillingSelect (auto — no manual 'Verify' button)",
+        "validateSavedAddress(address) called immediately on selection",
         "POST /api/address/validate: server-side authoritative check",
         "checkout-address-validator.ts reads x-country header",
         "LocationService.getLocationAddressRules(countryIso): fetches address rules from DB",
         "Validates: required fields, postal code format (regex), state validity (DB lookup), city validity",
         "Returns: { valid: boolean, errors: Record<string, string>, normalized: address }",
-        "If invalid: show field errors to customer",
-        "If valid: address passed to order creation"
-      ]
+        "If invalid: show field errors to customer; Place Order button stays blocked",
+        "If valid: shippingValidated / billingValidated set true; Place Order button unblocked"
+      ],
+      "performance_note": "Addresses prefetched into TanStack Query cache by CartHydrationProvider when cart.item_count > 0 and user is authenticated (staleTime: 60s)."
     },
     "inventory_reservation": {
       "title": "Inventory Reservation During Order Creation",
