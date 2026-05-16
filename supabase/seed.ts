@@ -96,6 +96,14 @@ async function seed() {
   }
   console.log(`Inserted ${products.length} products`);
 
+  // Per-product primary image URLs (Unsplash — relevant to each product)
+  const productImageMap: Record<string, string> = {
+    "ELEC-001": "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800", // headphones
+    "ELEC-002": "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800", // smart watch
+    "FASH-001": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800", // cotton t-shirt
+    "FASH-002": "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800",  // running sneakers
+  };
+
   // Product variants + inventory
   for (const product of products) {
     const { data: variant } = await supabase
@@ -117,9 +125,11 @@ async function seed() {
         reserved: 0,
       });
 
+      const imageUrl = productImageMap[product.sku] ?? "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800";
+
       await supabase.from("product_images").insert({
         product_id: product.id,
-        url: `https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800`,
+        url: imageUrl,
         alt_text: product.name,
         sort_order: 0,
         is_primary: true,

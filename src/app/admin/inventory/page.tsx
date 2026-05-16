@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAdminProducts, useAdminUpdateInventory } from "@/features/admin/hooks/use-admin-products";
 import { useActiveCountries } from "@/features/admin/hooks/use-country-management";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
@@ -138,30 +139,24 @@ export default function AdminInventoryPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeader title="Inventory" description="Manage stock levels. Switch scope to set per-country stock." />
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Scope:</span>
-          <button
-            onClick={() => setSelectedCountry("global")}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              selectedCountry === "global" ? "bg-primary text-primary-foreground shadow-sm" : "border hover:bg-muted"
-            }`}
-          >
-            Global
-          </button>
-          {countries.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setSelectedCountry(c.id)}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                selectedCountry === c.id ? "bg-primary text-primary-foreground shadow-sm" : "border hover:bg-muted"
-              }`}
-            >
-              {c.iso_alpha2} · {c.name}
-            </button>
-          ))}
+          <Select value={selectedCountry} onValueChange={setSelectedCountry}>
+            <SelectTrigger className="h-9 w-52">
+              <SelectValue placeholder="Select scope" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="global">🌐 Global</SelectItem>
+              {countries.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.iso_alpha2} · {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {selectedCountry !== "global" && (
             <Badge variant="outline" className="text-xs">
-              Country pool — falls back to Global if not set
+              Falls back to Global if not set
             </Badge>
           )}
         </div>
