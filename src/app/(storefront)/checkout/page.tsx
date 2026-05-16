@@ -110,7 +110,13 @@ export default function CheckoutPage() {
   const { mutate: createOrder, isPending } = useCreateOrder();
 
   const params = useParams<{ country?: string }>();
-  const activeCountryIso = params?.country ? countryIdToIso(params.country) : "IN";
+  // Prefer the country from serverCart (set by middleware/cart-service) as it
+  // is always correct. Fall back to URL param, then "us" as last resort.
+  const activeCountryIso = serverCart?.country_id
+    ? countryIdToIso(serverCart.country_id)
+    : params?.country
+      ? countryIdToIso(params.country)
+      : "US";
 
   // Pricing — always from serverCart when available (server-authoritative)
   const pricing = serverCart?.pricing;
@@ -441,7 +447,11 @@ export default function CheckoutPage() {
                       </div>
                     )}
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Tax (18% GST)</span>
+                      <span className="text-muted-foreground">
+                        {pricing.tax_label
+                          ? `${pricing.tax_label} (${Math.round(pricing.tax_rate * 100)}%)`
+                          : "Tax"}
+                      </span>
                       <span>{formatPrice(pricing.estimated_tax)}</span>
                     </div>
                     <div className="flex justify-between">

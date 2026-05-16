@@ -92,6 +92,10 @@ export interface CartPricing {
   estimated_shipping: number;
   estimated_tax: number;
   total: number;
+  /** Applied tax rate, e.g. 0.0875 for US Sales Tax, 0.18 for IN GST */
+  tax_rate: number;
+  /** Human-readable tax label for the active country, e.g. "Sales Tax", "GST", "VAT", "MwSt." */
+  tax_label: string;
 }
 
 // ── Cart warnings (shown to customer, not errors) ─────────────────────────────

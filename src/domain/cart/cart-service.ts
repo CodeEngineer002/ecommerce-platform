@@ -25,6 +25,7 @@ import type { CouponData, LineItem } from "@/domain/pricing/types";
 import { CART_MAX_QUANTITY } from "@/lib/constants";
 import { logger } from "@/lib/logger";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getTaxConfig } from "@/lib/tax/tax-service";
 
 import { assertCartMutable } from "./cart-state-machine";
 import { emitCartEvent } from "./cart-events";
@@ -245,7 +246,11 @@ async function buildCartSummary(cartId: string): Promise<CartSummary> {
     }
   }
 
-  const breakdown = calculatePricing(lineItems, couponData);
+  // Resolve country-specific tax config so the cart reflects the correct rate
+  // country_id is a lowercased ISO-like key ('us', 'in', 'de', etc.) — getTaxConfig
+  // accepts both ISO-2 ('US') and our internal keys ('us') via case-insensitive lookup.
+  const taxConfig = getTaxConfig(cartRow.country_id ?? DEFAULT_COUNTRY);
+  const breakdown = calculatePricing(lineItems, couponData, undefined, taxConfig);
 
   const pricing: CartPricing = {
     subtotal: breakdown.subtotal,
@@ -253,6 +258,8 @@ async function buildCartSummary(cartId: string): Promise<CartSummary> {
     estimated_shipping: breakdown.shipping,
     estimated_tax: breakdown.tax,
     total: breakdown.total,
+    tax_rate: taxConfig.rate,
+    tax_label: taxConfig.label,
   };
 
   return {
@@ -271,6 +278,7 @@ async function buildCartSummary(cartId: string): Promise<CartSummary> {
 }
 
 function buildEmptyCartSummary(cartRow: CartRow): CartSummary {
+  const taxConfig = getTaxConfig(cartRow.country_id ?? DEFAULT_COUNTRY);
   return {
     id: cartRow.id,
     status: cartRow.status,
@@ -278,7 +286,11 @@ function buildEmptyCartSummary(cartRow: CartRow): CartSummary {
     country_id: cartRow.country_id ?? DEFAULT_COUNTRY,
     items: [],
     coupon_code: null,
-    pricing: { subtotal: 0, discount: 0, estimated_shipping: 0, estimated_tax: 0, total: 0 },
+    pricing: {
+      subtotal: 0, discount: 0, estimated_shipping: 0, estimated_tax: 0, total: 0,
+      tax_rate: taxConfig.rate,
+      tax_label: taxConfig.label,
+    },
     warnings: [],
     item_count: 0,
     expires_at: cartRow.expires_at,
@@ -324,9 +336,12 @@ export async function getOrCreateCart(identity: CartIdentity): Promise<CartSumma
       .single();
 
     if (existing) {
-      // Extend TTL on activity
+      // Extend TTL on activity and sync country if region changed
       await db.from("carts")
-        .update({ expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() })
+        .update({
+          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          country_id: country,
+        })
         .eq("id", existing.id);
       return buildCartSummary(existing.id);
     }
