@@ -2,6 +2,7 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { CodCollectionPanel } from "@/components/admin/orders/cod-collection-panel";
 import { AdminTrackingForm } from "@/components/admin/orders/tracking-form";
 import type { FulfillmentData } from "@/components/admin/orders/tracking-form";
 import { StatusBadge } from "@/components/common/status-badge";
@@ -33,21 +34,49 @@ export default async function AdminOrderDetailPage({ params }: Props) {
 
   if (!order) notFound();
 
-  // Fetch latest fulfillment
-  const { data: fulfillmentRaw } = await db
-    .from("order_fulfillments")
-    .select("id, carrier, tracking_number, tracking_url, estimated_delivery, status")
-    .eq("order_id", orderId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // Fetch latest fulfillment and payment in parallel
+  const [{ data: fulfillmentRaw }, { data: paymentRaw }] = await Promise.all([
+    db
+      .from("order_fulfillments")
+      .select("id, carrier, tracking_number, tracking_url, estimated_delivery, status")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    db
+      .from("payments")
+      .select("id, provider, status, amount, metadata, created_at")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   type FulfillmentRow = FulfillmentData;
   const fulfillment = (fulfillmentRaw as unknown as FulfillmentRow | null);
 
-  const shipping = order.shipping_address as Record<string, string> | null;
+  const payment = paymentRaw as {
+    id: string;
+    provider: string;
+    status: string;
+    amount: number;
+    metadata: Record<string, unknown> | null;
+    created_at: string;
+  } | null;
 
-  // Currency — simple fallback
+  const isCod          = payment?.provider === "cod";
+  const codPending     = isCod && (payment?.status === "cod_pending_collection" || payment?.status === "pending");
+  const codCollectedAt = isCod ? (payment?.metadata?.cod_collected_at as string | null ?? null) : null;
+
+  // Show COD panel when order is in a collection-eligible status
+  const codEligibleStatuses = ["out_for_delivery", "delivered", "confirmed", "processing", "packed", "shipped"];
+  // Show pending panel when COD payment is awaiting collection
+  // Show collected panel only when there's a real cod_collected_at timestamp (prevents
+  // erroneously-set 'succeeded' from showing the collected banner)
+  const codActuallyCollected = isCod && payment?.status === "succeeded" && Boolean(codCollectedAt);
+  const showCodPanel = isCod && (codPending || codActuallyCollected) && codEligibleStatuses.includes(order.status);
+
+  const shipping = order.shipping_address as Record<string, string> | null;
   const fmt = (n: number) => formatPrice(n);
 
   return (
@@ -81,6 +110,16 @@ export default async function AdminOrderDetailPage({ params }: Props) {
 
         {/* ── Left column ────────────────────────────────────────────── */}
         <div className="space-y-6">
+
+          {/* ── COD Collection Panel ──────────────────────────────────── */}
+          {showCodPanel && (
+            <CodCollectionPanel
+              orderId={orderId}
+              orderTotal={Number(order.total)}
+              paymentStatus={payment?.status ?? "cod_pending_collection"}
+              collectedAt={codCollectedAt}
+            />
+          )}
 
           {/* ── Tracking ──────────────────────────────────────────────── */}
           <Card>
@@ -121,7 +160,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                 </div>
               )}
 
-              <AdminTrackingForm orderId={orderId} fulfillment={fulfillment} />
+              <AdminTrackingForm orderId={orderId} orderCreatedAt={order.created_at} fulfillment={fulfillment} />
             </CardContent>
           </Card>
 
@@ -194,6 +233,31 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                 <span>Total</span>
                 <span>{fmt(order.total)}</span>
               </div>
+
+              {/* Payment method + status */}
+              {payment && (
+                <>
+                  <Separator />
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Payment</span>
+                    <span className="font-medium uppercase">{payment.provider}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Payment status</span>
+                    <span className={
+                      payment.status === "succeeded"
+                        ? "text-green-600 font-medium"
+                        : payment.status === "cancelled"
+                        ? "text-red-500 font-medium"
+                        : "text-amber-600 font-medium"
+                    }>
+                      {payment.status === "cod_pending_collection"
+                        ? "Pending Collection"
+                        : payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                    </span>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 

@@ -217,16 +217,22 @@ export const POST = withRateLimit(
       .select()
       .single();
 
-    // ── COD: confirm immediately ──────────────────────────────────────────────
+    // ── COD: confirm order, keep payment pending collection ──────────────────
+    // Payment is NOT marked succeeded here. Cash has not been collected yet.
+    // Admin must explicitly confirm cash collection via:
+    //   POST /api/admin/orders/:id/cod-collect
     if (paymentProvider === "cod") {
       await Promise.all([
         db.rpc("update_order_status", {
           p_order_id: orderId as string,
           p_new_status: "confirmed",
           p_changed_by: user.id,
-          p_reason: "Cash on delivery order auto-confirmed",
+          p_reason: "Cash on delivery order confirmed — awaiting cash collection at delivery",
         }),
-        db.from("payments").update({ status: "succeeded" }).eq("id", payment!.id),
+        // Mark payment as cod_pending_collection (not succeeded — cash not yet collected)
+        db.from("payments")
+          .update({ status: "cod_pending_collection" })
+          .eq("id", payment!.id),
       ]);
 
       // ── Fire-and-forget confirmation email ─────────────────────────────────

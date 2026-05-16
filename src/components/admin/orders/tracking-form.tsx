@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useMemo } from "react";
 import { useState } from "react";
 import { toast } from "react-hot-toast";
 
@@ -18,38 +19,98 @@ export interface FulfillmentData {
 }
 
 interface Props {
-  orderId:     string;
-  fulfillment: FulfillmentData | null;
-  onSaved?:    () => void;
+  orderId:          string;
+  orderCreatedAt:   string;   // ISO string — used to default estimated delivery
+  fulfillment:      FulfillmentData | null;
+  onSaved?:         () => void;
 }
 
-export function AdminTrackingForm({ orderId, fulfillment, onSaved }: Props) {
+/** Generate a unique internal tracking number: TRK-YYYYMMDD-XXXXXX */
+function generateTrackingNumber(): string {
+  const date = new Date();
+  const yyyymmdd = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("");
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // unambiguous charset
+  let suffix = "";
+  const arr = new Uint8Array(6);
+  crypto.getRandomValues(arr);
+  arr.forEach((b) => { suffix += chars[b % chars.length]; });
+  return `TRK-${yyyymmdd}-${suffix}`;
+}
+
+/** Return YYYY-MM-DD string N days after the given ISO date */
+function addDays(isoDate: string, days: number): string {
+  const d = new Date(isoDate);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Auto-generate tracking URL from carrier name + tracking number */
+function buildTrackingUrl(carrier: string, trackingNumber: string): string {
+  const c = carrier.toLowerCase().trim();
+  const t = encodeURIComponent(trackingNumber.trim());
+  if (!t) return "";
+  if (c.includes("delhivery"))  return `https://www.delhivery.com/track/package/${t}`;
+  if (c.includes("bluedart") || c.includes("blue dart")) return `https://www.bluedart.com/web/guest/trackdartship?trackfor=${t}`;
+  if (c.includes("shiprocket")) return `https://shiprocket.co/tracking/${t}`;
+  if (c.includes("fedex"))      return `https://www.fedex.com/apps/fedextrack/?tracknumbers=${t}`;
+  if (c.includes("dtdc"))       return `https://www.dtdc.in/trace.asp?Cnno=${t}`;
+  if (c.includes("ecom") || c.includes("ekart")) return `https://ecomexpress.in/tracking/?awb_field=${t}`;
+  if (c.includes("xpressbees")) return `https://www.xpressbees.com/shipment/tracking?awbNo=${t}`;
+  // Fallback: Google search
+  return `https://www.google.com/search?q=track+${encodeURIComponent(carrier)}+${t}`;
+}
+
+export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, onSaved }: Props) {
   const isUpdate = Boolean(fulfillment?.id);
 
+  // Auto-generate tracking number once when no tracking exists yet
+  const autoTracking = useMemo(
+    () => fulfillment?.tracking_number ?? generateTrackingNumber(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   const [carrier,           setCarrier]           = useState(fulfillment?.carrier ?? "");
-  const [trackingNumber,    setTrackingNumber]     = useState(fulfillment?.tracking_number ?? "");
+  const [trackingNumber,    setTrackingNumber]     = useState(autoTracking);
   const [trackingUrl,       setTrackingUrl]        = useState(fulfillment?.tracking_url ?? "");
   const [estimatedDelivery, setEstimatedDelivery]  = useState(
     fulfillment?.estimated_delivery
-      ? fulfillment.estimated_delivery.slice(0, 10)  // trim to YYYY-MM-DD for date input
-      : "",
+      ? fulfillment.estimated_delivery.slice(0, 10)
+      : addDays(orderCreatedAt, 3),
   );
   const [saving, setSaving] = useState(false);
+
+  // Track whether URL was manually edited (if so, don't overwrite on auto-fill)
+  const urlManuallyEdited = useRef(Boolean(fulfillment?.tracking_url));
+
+  // Auto-fill tracking URL when carrier + tracking number change
+  function handleCarrierOrTrackingChange(newCarrier: string, newTracking: string) {
+    if (!urlManuallyEdited.current) {
+      const auto = buildTrackingUrl(newCarrier, newTracking);
+      if (auto) setTrackingUrl(auto);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
 
+    // Auto-generate tracking URL if not set
+    const finalUrl = trackingUrl || buildTrackingUrl(carrier, trackingNumber);
+
     try {
       if (isUpdate) {
-        // PATCH — update tracking on existing fulfillment
         await apiFetch(`/api/admin/orders/${orderId}/fulfillment`, {
           method: "PATCH",
           body: JSON.stringify({
             fulfillment_id:    fulfillment!.id!,
             carrier:           carrier       || undefined,
             tracking_number:   trackingNumber || undefined,
-            tracking_url:      trackingUrl    || undefined,
+            tracking_url:      finalUrl       || undefined,
             estimated_delivery: estimatedDelivery
               ? new Date(estimatedDelivery).toISOString()
               : undefined,
@@ -57,20 +118,20 @@ export function AdminTrackingForm({ orderId, fulfillment, onSaved }: Props) {
         });
         toast.success("Tracking updated");
       } else {
-        // POST — create new fulfillment with tracking
         await apiFetch(`/api/admin/orders/${orderId}/fulfillment`, {
           method: "POST",
           body: JSON.stringify({
             carrier:           carrier       || undefined,
             tracking_number:   trackingNumber || undefined,
-            tracking_url:      trackingUrl    || undefined,
+            tracking_url:      finalUrl       || undefined,
             estimated_delivery: estimatedDelivery
               ? new Date(estimatedDelivery).toISOString()
               : undefined,
           }),
         });
-        toast.success("Tracking saved");
+        toast.success("Tracking saved — order marked as shipped");
       }
+      if (finalUrl && finalUrl !== trackingUrl) setTrackingUrl(finalUrl);
       onSaved?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save tracking");
@@ -88,28 +149,49 @@ export function AdminTrackingForm({ orderId, fulfillment, onSaved }: Props) {
             id="carrier"
             placeholder="e.g. Delhivery, FedEx, Blue Dart"
             value={carrier}
-            onChange={(e) => setCarrier(e.target.value)}
+            onChange={(e) => {
+              setCarrier(e.target.value);
+              handleCarrierOrTrackingChange(e.target.value, trackingNumber);
+            }}
           />
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="tracking_number">Tracking Number</Label>
+          <Label htmlFor="tracking_number">
+            Tracking Number / AWB
+            {!isUpdate && (
+              <span className="ml-1.5 text-xs text-muted-foreground">(auto-generated)</span>
+            )}
+          </Label>
           <Input
             id="tracking_number"
             placeholder="e.g. 1234567890"
             value={trackingNumber}
-            onChange={(e) => setTrackingNumber(e.target.value)}
+            readOnly={!isUpdate}
+            className={!isUpdate ? "bg-muted text-muted-foreground cursor-default" : ""}
+            onChange={(e) => {
+              if (isUpdate) {
+                setTrackingNumber(e.target.value);
+                handleCarrierOrTrackingChange(carrier, e.target.value);
+              }
+            }}
           />
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="tracking_url">Tracking URL</Label>
+          <Label htmlFor="tracking_url">
+            Tracking URL
+            <span className="ml-1.5 text-xs text-muted-foreground">(auto-filled from carrier)</span>
+          </Label>
           <Input
             id="tracking_url"
             type="url"
             placeholder="https://track.carrier.com/..."
             value={trackingUrl}
-            onChange={(e) => setTrackingUrl(e.target.value)}
+            onChange={(e) => {
+              urlManuallyEdited.current = true;
+              setTrackingUrl(e.target.value);
+            }}
           />
         </div>
 

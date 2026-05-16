@@ -384,6 +384,68 @@ export type Database = {
         }
         Relationships: []
       }
+      carrier_webhook_secrets: {
+        Row: {
+          carrier_id: string
+          created_at: string
+          header_name: string
+          secret: string
+          updated_at: string
+        }
+        Insert: {
+          carrier_id: string
+          created_at?: string
+          header_name?: string
+          secret: string
+          updated_at?: string
+        }
+        Update: {
+          carrier_id?: string
+          created_at?: string
+          header_name?: string
+          secret?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "carrier_webhook_secrets_carrier_id_fkey"
+            columns: ["carrier_id"]
+            isOneToOne: true
+            referencedRelation: "carriers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      carriers: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          logo_url: string | null
+          name: string
+          tracking_url_template: string | null
+          webhook_event_map: Json
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          is_active?: boolean
+          logo_url?: string | null
+          name: string
+          tracking_url_template?: string | null
+          webhook_event_map?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          logo_url?: string | null
+          name?: string
+          tracking_url_template?: string | null
+          webhook_event_map?: Json
+        }
+        Relationships: []
+      }
       cart_events: {
         Row: {
           actor_id: string | null
@@ -884,6 +946,7 @@ export type Database = {
       cms_banners: {
         Row: {
           background_color: string | null
+          country_id: string | null
           created_at: string
           cta_open_new_tab: boolean
           cta_text: string | null
@@ -891,8 +954,12 @@ export type Database = {
           handle: string
           id: string
           image_url: string | null
+          inheritance_enabled: boolean
+          inherits_from_id: string | null
           is_active: boolean
-          locale_id: string
+          locale_id: string | null
+          override_status: string
+          scope_type: string
           sort_order: number
           subtitle: string | null
           text_color: string | null
@@ -903,6 +970,7 @@ export type Database = {
         }
         Insert: {
           background_color?: string | null
+          country_id?: string | null
           created_at?: string
           cta_open_new_tab?: boolean
           cta_text?: string | null
@@ -910,8 +978,12 @@ export type Database = {
           handle: string
           id?: string
           image_url?: string | null
+          inheritance_enabled?: boolean
+          inherits_from_id?: string | null
           is_active?: boolean
-          locale_id: string
+          locale_id?: string | null
+          override_status?: string
+          scope_type?: string
           sort_order?: number
           subtitle?: string | null
           text_color?: string | null
@@ -922,6 +994,7 @@ export type Database = {
         }
         Update: {
           background_color?: string | null
+          country_id?: string | null
           created_at?: string
           cta_open_new_tab?: boolean
           cta_text?: string | null
@@ -929,8 +1002,12 @@ export type Database = {
           handle?: string
           id?: string
           image_url?: string | null
+          inheritance_enabled?: boolean
+          inherits_from_id?: string | null
           is_active?: boolean
-          locale_id?: string
+          locale_id?: string | null
+          override_status?: string
+          scope_type?: string
           sort_order?: number
           subtitle?: string | null
           text_color?: string | null
@@ -940,6 +1017,20 @@ export type Database = {
           valid_until?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "cms_banners_country_id_fkey"
+            columns: ["country_id"]
+            isOneToOne: false
+            referencedRelation: "countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cms_banners_inherits_from_id_fkey"
+            columns: ["inherits_from_id"]
+            isOneToOne: false
+            referencedRelation: "cms_banners"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cms_banners_locale_id_fkey"
             columns: ["locale_id"]
@@ -994,12 +1085,17 @@ export type Database = {
         Row: {
           content: string | null
           content_json: Json | null
+          country_id: string | null
           created_at: string
           created_by: string | null
           handle: string
           id: string
+          inheritance_enabled: boolean
+          inherits_from_id: string | null
           is_active: boolean
-          locale_id: string
+          locale_id: string | null
+          override_status: string
+          scope_type: string
           title: string | null
           type: string
           updated_at: string
@@ -1007,12 +1103,17 @@ export type Database = {
         Insert: {
           content?: string | null
           content_json?: Json | null
+          country_id?: string | null
           created_at?: string
           created_by?: string | null
           handle: string
           id?: string
+          inheritance_enabled?: boolean
+          inherits_from_id?: string | null
           is_active?: boolean
-          locale_id: string
+          locale_id?: string | null
+          override_status?: string
+          scope_type?: string
           title?: string | null
           type: string
           updated_at?: string
@@ -1020,17 +1121,36 @@ export type Database = {
         Update: {
           content?: string | null
           content_json?: Json | null
+          country_id?: string | null
           created_at?: string
           created_by?: string | null
           handle?: string
           id?: string
+          inheritance_enabled?: boolean
+          inherits_from_id?: string | null
           is_active?: boolean
-          locale_id?: string
+          locale_id?: string | null
+          override_status?: string
+          scope_type?: string
           title?: string | null
           type?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cms_blocks_country_id_fkey"
+            columns: ["country_id"]
+            isOneToOne: false
+            referencedRelation: "countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cms_blocks_inherits_from_id_fkey"
+            columns: ["inherits_from_id"]
+            isOneToOne: false
+            referencedRelation: "cms_blocks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cms_blocks_locale_id_fkey"
             columns: ["locale_id"]
@@ -1039,6 +1159,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      cms_inheritance_audit: {
+        Row: {
+          action: string
+          actor_id: string
+          country: string
+          created_at: string
+          entity_id: string
+          id: string
+          locale_id: string | null
+          meta: Json
+          module: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          country: string
+          created_at?: string
+          entity_id: string
+          id?: string
+          locale_id?: string | null
+          meta?: Json
+          module: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          country?: string
+          created_at?: string
+          entity_id?: string
+          id?: string
+          locale_id?: string | null
+          meta?: Json
+          module?: string
+        }
+        Relationships: []
       }
       cms_navigation_items: {
         Row: {
@@ -1116,33 +1272,62 @@ export type Database = {
       }
       cms_navigation_menus: {
         Row: {
+          country_id: string | null
           created_at: string
           handle: string
           id: string
+          inheritance_enabled: boolean
+          inherits_from_id: string | null
           is_active: boolean
-          locale_id: string
+          locale_id: string | null
           name: string
+          override_status: string
+          scope_type: string
           updated_at: string
         }
         Insert: {
+          country_id?: string | null
           created_at?: string
           handle: string
           id?: string
+          inheritance_enabled?: boolean
+          inherits_from_id?: string | null
           is_active?: boolean
-          locale_id: string
+          locale_id?: string | null
           name: string
+          override_status?: string
+          scope_type?: string
           updated_at?: string
         }
         Update: {
+          country_id?: string | null
           created_at?: string
           handle?: string
           id?: string
+          inheritance_enabled?: boolean
+          inherits_from_id?: string | null
           is_active?: boolean
-          locale_id?: string
+          locale_id?: string | null
           name?: string
+          override_status?: string
+          scope_type?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cms_navigation_menus_country_id_fkey"
+            columns: ["country_id"]
+            isOneToOne: false
+            referencedRelation: "countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cms_navigation_menus_inherits_from_id_fkey"
+            columns: ["inherits_from_id"]
+            isOneToOne: false
+            referencedRelation: "cms_navigation_menus"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cms_navigation_menus_locale_id_fkey"
             columns: ["locale_id"]
@@ -1435,6 +1620,48 @@ export type Database = {
             columns: ["fallback_language_id"]
             isOneToOne: false
             referencedRelation: "languages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      country_inventory: {
+        Row: {
+          country_id: string
+          id: string
+          quantity: number
+          reserved: number
+          updated_at: string
+          variant_id: string
+        }
+        Insert: {
+          country_id: string
+          id?: string
+          quantity?: number
+          reserved?: number
+          updated_at?: string
+          variant_id: string
+        }
+        Update: {
+          country_id?: string
+          id?: string
+          quantity?: number
+          reserved?: number
+          updated_at?: string
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "country_inventory_country_id_fkey"
+            columns: ["country_id"]
+            isOneToOne: false
+            referencedRelation: "countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "country_inventory_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
             referencedColumns: ["id"]
           },
         ]
@@ -1941,9 +2168,13 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          inheritance_enabled: boolean
+          inherits_from_id: string | null
           is_active: boolean
           language_id: string
-          locale_id: string
+          locale_id: string | null
+          override_status: string
+          scope_type: string
           seo_desc: string | null
           seo_title: string | null
           slug: string
@@ -1956,9 +2187,13 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          inheritance_enabled?: boolean
+          inherits_from_id?: string | null
           is_active?: boolean
           language_id: string
-          locale_id: string
+          locale_id?: string | null
+          override_status?: string
+          scope_type?: string
           seo_desc?: string | null
           seo_title?: string | null
           slug: string
@@ -1971,9 +2206,13 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          inheritance_enabled?: boolean
+          inherits_from_id?: string | null
           is_active?: boolean
           language_id?: string
-          locale_id?: string
+          locale_id?: string | null
+          override_status?: string
+          scope_type?: string
           seo_desc?: string | null
           seo_title?: string | null
           slug?: string
@@ -1993,6 +2232,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "localized_cms_pages_inherits_from_id_fkey"
+            columns: ["inherits_from_id"]
+            isOneToOne: false
+            referencedRelation: "localized_cms_pages"
             referencedColumns: ["id"]
           },
           {
@@ -2017,9 +2263,13 @@ export type Database = {
           country_id: string
           created_at: string
           id: string
+          inheritance_enabled: boolean
+          inherits_from_id: string | null
           is_active: boolean
           language_id: string
-          locale_id: string
+          locale_id: string | null
+          override_status: string
+          scope_type: string
           sort_order: number
           subtitle: string | null
           title: string | null
@@ -2031,9 +2281,13 @@ export type Database = {
           country_id: string
           created_at?: string
           id?: string
+          inheritance_enabled?: boolean
+          inherits_from_id?: string | null
           is_active?: boolean
           language_id: string
-          locale_id: string
+          locale_id?: string | null
+          override_status?: string
+          scope_type?: string
           sort_order?: number
           subtitle?: string | null
           title?: string | null
@@ -2045,9 +2299,13 @@ export type Database = {
           country_id?: string
           created_at?: string
           id?: string
+          inheritance_enabled?: boolean
+          inherits_from_id?: string | null
           is_active?: boolean
           language_id?: string
-          locale_id?: string
+          locale_id?: string | null
+          override_status?: string
+          scope_type?: string
           sort_order?: number
           subtitle?: string | null
           title?: string | null
@@ -2060,6 +2318,13 @@ export type Database = {
             columns: ["country_id"]
             isOneToOne: false
             referencedRelation: "countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "localized_homepage_sections_inherits_from_id_fkey"
+            columns: ["inherits_from_id"]
+            isOneToOne: false
+            referencedRelation: "localized_homepage_sections"
             referencedColumns: ["id"]
           },
           {
@@ -3243,6 +3508,7 @@ export type Database = {
       }
       products: {
         Row: {
+          available_country_ids: string[]
           barcode: string | null
           base_price: number
           brand_id: string | null
@@ -3268,6 +3534,7 @@ export type Database = {
           weight: number | null
         }
         Insert: {
+          available_country_ids?: string[]
           barcode?: string | null
           base_price: number
           brand_id?: string | null
@@ -3293,6 +3560,7 @@ export type Database = {
           weight?: number | null
         }
         Update: {
+          available_country_ids?: string[]
           barcode?: string | null
           base_price?: number
           brand_id?: string | null
@@ -4244,6 +4512,76 @@ export type Database = {
         }
         Relationships: []
       }
+      tracking_events: {
+        Row: {
+          carrier_event_id: string | null
+          carrier_id: string | null
+          carrier_status: string
+          created_at: string
+          description: string | null
+          event_time: string
+          fulfillment_id: string
+          id: string
+          internal_status: string
+          location: string | null
+          order_id: string
+          raw_payload: Json | null
+          source: string
+        }
+        Insert: {
+          carrier_event_id?: string | null
+          carrier_id?: string | null
+          carrier_status: string
+          created_at?: string
+          description?: string | null
+          event_time?: string
+          fulfillment_id: string
+          id?: string
+          internal_status: string
+          location?: string | null
+          order_id: string
+          raw_payload?: Json | null
+          source?: string
+        }
+        Update: {
+          carrier_event_id?: string | null
+          carrier_id?: string | null
+          carrier_status?: string
+          created_at?: string
+          description?: string | null
+          event_time?: string
+          fulfillment_id?: string
+          id?: string
+          internal_status?: string
+          location?: string | null
+          order_id?: string
+          raw_payload?: Json | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracking_events_carrier_id_fkey"
+            columns: ["carrier_id"]
+            isOneToOne: false
+            referencedRelation: "carriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracking_events_fulfillment_id_fkey"
+            columns: ["fulfillment_id"]
+            isOneToOne: false
+            referencedRelation: "order_fulfillments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracking_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           expires_at: string | null
@@ -4444,11 +4782,33 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      append_tracking_event: {
+        Args: {
+          p_carrier_event_id?: string
+          p_carrier_status: string
+          p_description?: string
+          p_event_time?: string
+          p_fulfillment_id: string
+          p_internal_status: string
+          p_location?: string
+          p_raw_payload?: Json
+          p_source?: string
+        }
+        Returns: string
+      }
       approve_return: {
         Args: { p_admin_id: string; p_note?: string; p_return_id: string }
         Returns: undefined
       }
       available_inventory: { Args: { p_variant_id: string }; Returns: number }
+      available_stock_for_country: {
+        Args: { p_country_id: string; p_variant_id: string }
+        Returns: number
+      }
+      cancel_cod_payment: {
+        Args: { p_actor_id: string; p_order_id: string; p_reason?: string }
+        Returns: undefined
+      }
       cancel_order: {
         Args: {
           p_actor_type?: string
@@ -4458,9 +4818,20 @@ export type Database = {
         }
         Returns: undefined
       }
+      cancel_unpaid_orders: { Args: never; Returns: number }
       commit_inventory_for_order: {
         Args: { p_actor_id?: string; p_order_id: string }
         Returns: undefined
+      }
+      confirm_cod_cash_collected: {
+        Args: {
+          p_actor_id: string
+          p_actor_role?: string
+          p_amount: number
+          p_notes?: string
+          p_order_id: string
+        }
+        Returns: string
       }
       confirm_inventory_sale: {
         Args: { p_quantity: number; p_variant_id: string }
@@ -4554,6 +4925,10 @@ export type Database = {
       }
       release_inventory_for_order: {
         Args: { p_actor_id?: string; p_order_id: string }
+        Returns: undefined
+      }
+      release_inventory_reservation: {
+        Args: { p_order_id: string }
         Returns: undefined
       }
       request_return: {
@@ -4650,6 +5025,7 @@ export type Database = {
         | "failed"
         | "refunded"
         | "cancelled"
+        | "cod_pending_collection"
       section_type:
         | "hero_banner"
         | "featured_products"
@@ -4848,6 +5224,7 @@ export const Constants = {
         "failed",
         "refunded",
         "cancelled",
+        "cod_pending_collection",
       ],
       section_type: [
         "hero_banner",

@@ -71,6 +71,21 @@ export const PATCH = withApiHandler(
       metadata: { status, reason },
     });
 
+    // ── COD: cancel payment when order cancelled/failed before delivery ───────
+    // If the order is cancelled or failed and payment method is COD, the payment
+    // should be set to 'cancelled' — no cash was collected, no refund needed.
+    if (status === "cancelled" || status === "failed") {
+      void db.rpc("cancel_cod_payment", {
+        p_order_id: id,
+        p_actor_id: user.id,
+        p_reason:   reason ?? `Order ${status} before COD collection`,
+      }).then(({ error: rpcErr }) => {
+        if (rpcErr) {
+          console.error("[admin/orders/status] cancel_cod_payment failed:", rpcErr.message);
+        }
+      });
+    }
+
     // ── Fire-and-forget emails for shipped / cancelled ────────────────────────
     if (status === "shipped" || status === "cancelled") {
       void (async () => {

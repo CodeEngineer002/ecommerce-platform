@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { CartDrawer } from "@/components/ecommerce/cart-drawer";
 import { Footer } from "@/components/layout/footer";
 import { Navbar } from "@/components/layout/navbar";
+import { NavigationEvents } from "@/components/ui/navigation-events";
+import { NavigationOverlay } from "@/components/ui/navigation-overlay";
 import { CartHydrationProvider } from "@/features/cart/cart-hydration-provider";
 import { UserHydrationProvider } from "@/features/auth/user-hydration-provider";
 import { APP_NAME } from "@/lib/constants";
@@ -88,6 +90,8 @@ export default async function LocaleLayout({ children, params }: Props) {
           <main className="flex-1">{children}</main>
           <Footer />
           <CartDrawer />
+          <NavigationOverlay />
+          <NavigationEvents />
         </div>
       </CartHydrationProvider>
     </UserHydrationProvider>

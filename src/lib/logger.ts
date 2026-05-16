@@ -19,7 +19,7 @@
  */
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
-export type LogChannel = "app" | "audit" | "payment" | "cms" | "inventory" | "order";
+export type LogChannel = "app" | "audit" | "payment" | "cms" | "inventory" | "order" | "webhook";
 
 export interface LogContext extends Record<string, unknown> {
   correlationId?: string;

@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { AdminSidebar } from "@/components/layout/admin-sidebar";
+import { NavigationEvents } from "@/components/ui/navigation-events";
+import { NavigationOverlay } from "@/components/ui/navigation-overlay";
 import { AdminProvider } from "@/lib/admin/context";
 import { APP_NAME, ROUTES } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/server";
@@ -67,6 +69,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <main className="flex-1 p-6">{children}</main>
         </div>
       </div>
+      <NavigationOverlay />
+      <NavigationEvents />
     </AdminProvider>
   );
 }
