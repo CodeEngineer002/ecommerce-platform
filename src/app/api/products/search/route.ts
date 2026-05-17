@@ -17,12 +17,13 @@ const searchSchema = z.object({
   featured:  z.enum(["true", "false"]).optional(),
 });
 
-// Shared join shape — mirrors product.service.ts PRODUCT_SELECT
+// Shared join shape — mirrors product.service.ts PRODUCT_SELECT.
+// inventory_levels is the source of truth (migration 00017).
 const PRODUCT_SELECT = `
   *,
   category:categories!products_category_id_fkey(*),
   images:product_images(*),
-  variants:product_variants(*, inventory(*))
+  variants:product_variants(*, inventory_levels(quantity, reserved))
 ` as const;
 
 export const GET = withApiHandler(async (request: Request) => {

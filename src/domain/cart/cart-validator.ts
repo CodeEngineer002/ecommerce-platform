@@ -36,18 +36,19 @@ export async function validateCart(
   const db = createServiceClient();
   const variantIds = items.map((i) => i.variantId);
 
+  type InventoryLevel = { quantity: number; reserved: number };
   type VariantRow = {
     id: string;
     price: number | null;
     is_active: boolean;
     product: { name: string; base_price: number } | null;
-    inventory: { quantity: number; reserved: number } | null;
+    inventory_levels: InventoryLevel[] | null;
   };
 
   const { data: variants } = await db
     .from("product_variants")
     .select(
-      "id, price, is_active, product:products(name, base_price), inventory(quantity, reserved)",
+      "id, price, is_active, product:products(name, base_price), inventory_levels(quantity, reserved)",
     )
     .in("id", variantIds);
 
@@ -68,10 +69,10 @@ export async function validateCart(
     }
 
     const product = Array.isArray(row.product) ? row.product[0] : row.product;
-    const inventory = Array.isArray(row.inventory) ? row.inventory[0] : row.inventory;
+    const levels = Array.isArray(row.inventory_levels) ? row.inventory_levels : [];
 
     const serverPrice = row.price ?? product?.base_price ?? 0;
-    const available = inventory ? inventory.quantity - inventory.reserved : 0;
+    const available = levels.reduce((sum, l) => sum + Math.max(0, l.quantity - l.reserved), 0);
     const productName = product?.name ?? "Unknown product";
 
     // Quantity exceeds per-item max

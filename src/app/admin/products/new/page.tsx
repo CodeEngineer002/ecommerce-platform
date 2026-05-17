@@ -120,7 +120,16 @@ export default function NewProductPage() {
                   error={errors.compare_price}
                   {...register("compare_price", { valueAsNumber: true })}
                 />
-                <FormField label="SKU" {...register("sku")} />
+                <FormField
+                  label="Product Code"
+                  description="Unique business identifier — e.g. FASH-003, ELEC-001. Stable across title changes."
+                  error={errors.product_code}
+                  {...register("product_code", {
+                    onChange: (e) => {
+                      e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+                    },
+                  })}
+                />
               </CardContent>
             </Card>
 

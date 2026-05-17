@@ -78,9 +78,14 @@ export default async function LocaleProductDetailPage({ params }: Props) {
     : { country: "in", lang: "en" };
   const routes = buildLocaleRoutes(localeParams);
 
-  const inStock = product.variants.some(
-    (v) => v.is_active && (v.inventory?.quantity ?? 0) > 0
-  );
+  const inStock = product.variants.some((v) => {
+    if (!v.is_active) return false;
+    const levels = (v as typeof v & { inventory_levels?: { quantity: number; reserved: number }[] }).inventory_levels;
+    if (levels && levels.length > 0) {
+      return levels.some((l) => l.quantity - l.reserved > 0);
+    }
+    return (v.inventory?.quantity ?? 0) > 0;
+  });
 
   return (
     <div className="container py-8">

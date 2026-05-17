@@ -249,6 +249,66 @@
           "description": "Whitelist-based HTML sanitizer. Always applied before returning CMS content."
         }
       }
+    },
+    "SkuGenerator": {
+      "file": "src/domain/catalog/sku-generator.ts",
+      "type": "Functions",
+      "description": "Deterministic SKU generation utilities. Implements ADR-008 two-level catalog identifier model.",
+      "adr": "ADR-008",
+      "methods": {
+        "generateProductCode": {
+          "params": ["productName: string", "sequenceNumber: number"],
+          "returns": "string",
+          "description": "Generates a product-level code from name initials + zero-padded sequence. e.g. 'Oversized Premium Hoodie', 1 → 'OPH-001'. Only for new products — never regenerate existing."
+        },
+        "generateVariantSku": {
+          "params": ["productCode: string", "optionValues: Record<string, string>"],
+          "returns": "string",
+          "description": "Generates deterministic variant SKU. e.g. FASH-003 + {color:'Black', size:'XS'} → 'FASH-003-BLK-XS'. Color always before size; uses COLOR_CODE_MAP and SIZE_CODE_MAP."
+        },
+        "generateVariantSkuMatrix": {
+          "params": ["productCode: string", "optionCombinations: Record<string, string>[]"],
+          "returns": "string[]",
+          "description": "Generates all SKUs for a product's variant matrix. Throws on duplicate combinations."
+        },
+        "normalizeSku": {
+          "params": ["raw: string"],
+          "returns": "string",
+          "description": "Uppercase, spaces→hyphens, strip non-alphanumeric, collapse hyphens."
+        },
+        "validateSku": {
+          "params": ["sku: string"],
+          "returns": "string[]",
+          "description": "Returns all validation errors. Empty = valid. Rules: uppercase, A-Z 0-9 hyphens, 3-50 chars."
+        },
+        "resolveColorCode": {
+          "params": ["colorName: string"],
+          "returns": "string",
+          "description": "Maps color name to standardized 3-char code: Black→BLK, Beige→BEI, etc."
+        },
+        "parseSku": {
+          "params": ["sku: string"],
+          "returns": "ParsedSku | null",
+          "description": "Parses SKU back to {productCode, colorCode, sizeCode, extra}."
+        }
+      }
+    },
+    "CatalogErrors": {
+      "file": "src/domain/catalog/catalog-errors.ts",
+      "type": "Classes",
+      "description": "Domain errors for the catalog layer. All extend CatalogError.",
+      "adr": "ADR-008",
+      "errors": [
+        "DuplicateProductCodeError — product_code already in use",
+        "DuplicateSkuError — variant sku already in use",
+        "DuplicateBarcodeError — barcode/GTIN already assigned",
+        "MissingProductCodeError — product_code required for all products",
+        "MissingVariantSkuError — sku required for all active variants",
+        "InvalidSkuFormatError — sku violates format rules",
+        "InvalidProductCodeError — product_code violates format rules",
+        "InvalidOptionCodeError — option value not resolvable to code"
+      ],
+      "helper": "mapDbErrorToCatalogError(dbMessage, context) — maps DB constraint violations to typed domain errors"
     }
   }
 }

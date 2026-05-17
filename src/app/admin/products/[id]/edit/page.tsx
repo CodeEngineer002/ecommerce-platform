@@ -50,6 +50,8 @@ export default function EditProductPage({ params }: Props) {
     productAny?.available_country_ids ?? []
   );
 
+  const productWithCode = product as (typeof product & { product_code?: string | null }) | undefined;
+
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
     values: product
@@ -61,6 +63,7 @@ export default function EditProductPage({ params }: Props) {
           category_id: product.category_id ?? undefined,
           base_price: product.base_price,
           compare_price: product.compare_price ?? undefined,
+          product_code: productWithCode?.product_code ?? "",
           sku: product.sku ?? "",
           tags: product.tags ?? [],
           is_active: product.is_active,
@@ -191,7 +194,16 @@ export default function EditProductPage({ params }: Props) {
                   type="number"
                   {...register("compare_price", { valueAsNumber: true })}
                 />
-                <FormField label="SKU" {...register("sku")} />
+                <FormField
+                  label="Product Code"
+                  description="Unique business identifier — e.g. FASH-003, ELEC-001. Stable across title changes."
+                  error={errors.product_code}
+                  {...register("product_code", {
+                    onChange: (e) => {
+                      e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+                    },
+                  })}
+                />
               </CardContent>
             </Card>
 

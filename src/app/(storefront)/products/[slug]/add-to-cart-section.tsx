@@ -51,9 +51,16 @@ export function AddToCartSection({
 
   const activeVariants = product.variants.filter((v) => v.is_active);
   const selectedVariant = activeVariants.find((v) => v.id === selectedVariantId);
-  const availableStock =
-    (selectedVariant?.inventory?.quantity ?? 0) -
-    (selectedVariant?.inventory?.reserved ?? 0);
+
+  // Prefer inventory_levels (source of truth per migration 00017); fallback to legacy inventory
+  const availableStock = (() => {
+    if (!selectedVariant) return 0;
+    const levels = (selectedVariant as typeof selectedVariant & { inventory_levels?: { quantity: number; reserved: number }[] }).inventory_levels;
+    if (levels && levels.length > 0) {
+      return levels.reduce((sum, l) => sum + Math.max(0, l.quantity - l.reserved), 0);
+    }
+    return Math.max(0, (selectedVariant.inventory?.quantity ?? 0) - (selectedVariant.inventory?.reserved ?? 0));
+  })();
 
   const handleAddToCart = () => {
     if (!selectedVariant) return;

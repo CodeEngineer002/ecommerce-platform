@@ -34,11 +34,13 @@ const orderRequestSchema = z.object({
 });
 
 // ── Query result types ────────────────────────────────────────────────────────
-type ProductRow = { id: string; name: string; base_price: number };
+type ProductRow = { id: string; name: string; base_price: number; product_code: string | null };
 type VariantRow = {
   id: string;
+  sku: string | null;
   price: number | null;
   is_active: boolean;
+  options: Record<string, string> | null;
   product: ProductRow | ProductRow[] | null;
 };
 
@@ -95,10 +97,11 @@ export const POST = withRateLimit(
     // ── Fetch authoritative prices — never trust client-submitted prices ──────
     // inventory is NOT fetched here; the hard stock check happens inside
     // create_order_atomic with a SELECT FOR UPDATE lock.
+    // Also fetch sku, options (color/size) and product_code for order snapshot.
     const variantIds = cartItems.map((i) => i.variant_id);
     const { data: variantsRaw, error: variantError } = await db
       .from("product_variants")
-      .select("id, price, is_active, product:products(id, name, base_price)")
+      .select("id, sku, price, is_active, options, product:products(id, name, base_price, product_code)")
       .in("id", variantIds);
 
     if (variantError || !variantsRaw) throw new Error("Failed to fetch product variants");
@@ -138,19 +141,26 @@ export const POST = withRateLimit(
     const pricing = calculatePricing(lineItems, couponData, undefined, taxConfig);
 
     // ── Build cart items payload for atomic RPC ───────────────────────────────
+    // snapshot captures product_code + sku + color/size so order history is
+    // resilient to future catalog changes (ADR-002: order immutability via snapshots).
     const atomicCartItems = cartItems.map((item) => {
       const variant = variants.find((v) => v.id === item.variant_id)!;
       const product = resolveProduct(variant.product);
       const unitPrice = getVariantPrice(variant);
+      const opts = (variant.options ?? {}) as Record<string, string>;
       return {
         variant_id: item.variant_id,
         quantity: item.quantity,
         unit_price: unitPrice,
         product_name: product?.name ?? "Unknown",
-        sku: null,
+        sku: variant.sku ?? null,
         snapshot: {
           variant_id: item.variant_id,
           product_id: product?.id ?? null,
+          product_code: product?.product_code ?? null,
+          sku: variant.sku ?? null,
+          color: opts.color ?? null,
+          size: opts.size ?? null,
           price_at_purchase: unitPrice,
         },
       };

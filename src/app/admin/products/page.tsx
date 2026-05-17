@@ -22,6 +22,7 @@ import type { Product } from "@/types";
 type AdminProductImage = { id: string; url: string; is_primary: boolean; sort_order: number };
 
 type ProductRow = Product & {
+  product_code?: string | null;
   category?: { id: string; name: string } | null;
   images?: AdminProductImage[];
 };
@@ -42,7 +43,9 @@ const columns = (
           </div>
           <div>
             <p className="font-medium">{p.name}</p>
-            <p className="text-xs text-muted-foreground">{p.sku}</p>
+            <p className="font-mono text-xs text-muted-foreground">
+              {p.product_code ?? p.sku ?? <span className="text-amber-500">No code</span>}
+            </p>
           </div>
         </div>
       );

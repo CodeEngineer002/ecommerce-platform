@@ -15,7 +15,11 @@ export async function adminGetProducts(page = 1) {
       *,
       category:categories!products_category_id_fkey(id, name),
       images:product_images(id, url, is_primary, sort_order),
-      variants:product_variants(id, name, sku, price, is_active, inventory(quantity, reserved))
+      variants:product_variants(
+        id, name, sku, price, is_active, is_default,
+        color_code, size_code, barcode, supplier_sku, options,
+        inventory_levels(quantity, reserved)
+      )
     `,
       { count: "exact" }
     )
@@ -39,7 +43,7 @@ export async function adminGetProduct(id: string) {
       *,
       category:categories!products_category_id_fkey(*),
       images:product_images(*, sort_order),
-      variants:product_variants(*, inventory(*))
+      variants:product_variants(*, inventory_levels(quantity, reserved))
     `
     )
     .eq("id", id)
@@ -145,16 +149,45 @@ export async function adminCreateVariant(
     .single();
   if (error) throw error;
 
-  await supabase.from("inventory").insert({ variant_id: data.id, quantity: 0, reserved: 0 });
+  // inventory_levels is the single source of truth (CLAUDE.md Step 1 / migration 00017).
+  // Fetch the default warehouse to create the inventory row.
+  const { data: warehouse } = await supabase
+    .from("warehouses")
+    .select("id")
+    .eq("is_default", true)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (warehouse) {
+    await supabase
+      .from("inventory_levels")
+      .upsert(
+        { warehouse_id: warehouse.id, variant_id: data.id, quantity: 0, reserved: 0 },
+        { onConflict: "warehouse_id,variant_id" }
+      );
+  }
+
   return data;
 }
 
 export async function adminUpdateInventory(variantId: string, quantity: number): Promise<void> {
   const supabase = createClient();
-  // update (not upsert) because inventory row is created with the variant
+  // inventory_levels is the single source of truth (CLAUDE.md Step 1 / migration 00017).
+  // Upsert covers the case where an inventory_levels row may not yet exist.
+  const { data: warehouse } = await supabase
+    .from("warehouses")
+    .select("id")
+    .eq("is_default", true)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!warehouse) throw new Error("Default warehouse not found");
+
   const { error } = await supabase
-    .from("inventory")
-    .update({ quantity })
-    .eq("variant_id", variantId);
+    .from("inventory_levels")
+    .upsert(
+      { warehouse_id: warehouse.id, variant_id: variantId, quantity, reserved: 0 },
+      { onConflict: "warehouse_id,variant_id" }
+    );
   if (error) throw error;
 }

@@ -31,6 +31,9 @@ export const registerSchema = z
     path: ["confirmPassword"],
   });
 
+// ── SKU format: uppercase, A-Z 0-9 hyphens, 3-50 chars, no leading/trailing hyphens
+const skuRegex = /^[A-Z0-9][A-Z0-9-]{1,48}[A-Z0-9]$|^[A-Z0-9]{1,50}$/;
+
 export const productSchema = z.object({
   name: z.string().min(2, "Product name is required"),
   slug: z.string().min(2, "Slug is required"),
@@ -39,12 +42,57 @@ export const productSchema = z.object({
   category_id: z.string().uuid().optional().nullable(),
   base_price: z.number().positive("Price must be positive"),
   compare_price: z.number().positive().optional().nullable(),
+  /** product_code — human/business-readable product identifier. e.g. FASH-003 */
+  product_code: z
+    .string()
+    .min(2, "Product code must be at least 2 characters")
+    .max(20, "Product code must not exceed 20 characters")
+    .regex(/^[A-Z0-9-]+$/, "Product code must be uppercase letters, digits, and hyphens only")
+    .optional()
+    .nullable(),
+  /** Legacy sku at product level — kept for backward compat. Use product_code for new code. */
   sku: z.string().optional(),
   tags: z.array(z.string()).default([]),
   is_active: z.boolean().default(true),
   is_featured: z.boolean().default(false),
   seo_title: z.string().max(60).optional(),
   seo_desc: z.string().max(160).optional(),
+});
+
+/** Schema for creating/updating a product variant with full identifier model */
+export const variantSchema = z.object({
+  product_id: z.string().uuid(),
+  name: z.string().min(1, "Variant name is required"),
+  /** Variant SKU — unique sellable identifier e.g. FASH-003-BLK-XS */
+  sku: z
+    .string()
+    .min(3, "SKU must be at least 3 characters")
+    .max(50, "SKU must not exceed 50 characters")
+    .regex(skuRegex, "SKU must be uppercase letters, digits, and hyphens only (e.g. FASH-003-BLK-XS)")
+    .transform((s) => s.toUpperCase()),
+  price: z.number().positive("Price must be positive").optional().nullable(),
+  color_code: z
+    .string()
+    .max(6, "Color code must not exceed 6 characters")
+    .regex(/^[A-Z]{2,6}$/, "Color code must be 2–6 uppercase letters (e.g. BLK, BEI)")
+    .optional()
+    .nullable(),
+  size_code: z
+    .string()
+    .max(6, "Size code must not exceed 6 characters")
+    .regex(/^[A-Z0-9]{1,6}$/, "Size code must be uppercase letters/digits (e.g. XS, M, XXL)")
+    .optional()
+    .nullable(),
+  barcode: z
+    .string()
+    .min(8, "Barcode must be at least 8 characters")
+    .max(20, "Barcode must not exceed 20 characters")
+    .optional()
+    .nullable(),
+  supplier_sku: z.string().max(50, "Supplier SKU must not exceed 50 characters").optional().nullable(),
+  is_active: z.boolean().default(true),
+  is_default: z.boolean().default(false),
+  options: z.record(z.string()).default({}),
 });
 
 export const categorySchema = z.object({
@@ -96,6 +144,7 @@ export type AddressFormData = z.infer<typeof addressSchema>;
 export type LoginFormData = z.infer<typeof loginSchema>;
 export type RegisterFormData = z.infer<typeof registerSchema>;
 export type ProductFormData = z.infer<typeof productSchema>;
+export type VariantFormData = z.infer<typeof variantSchema>;
 export type CategoryFormData = z.infer<typeof categorySchema>;
 export type CheckoutFormData = z.infer<typeof checkoutSchema>;
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import type { Inventory, ProductVariant } from "@/types";
+import type { ProductVariant } from "@/types";
 
 const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL"];
 
@@ -13,7 +13,14 @@ const COLOR_SWATCHES: Record<string, string> = {
   Charcoal: "#4a4a4a",
 };
 
-type VariantWithInventory = ProductVariant & { inventory: Inventory | null };
+// inventory_levels is the source of truth (CLAUDE.md Step 1 / migration 00017).
+// PostgREST returns it as an array; we sum across all active warehouse rows.
+type InventoryLevel = { quantity: number; reserved: number };
+type VariantWithInventory = ProductVariant & {
+  inventory_levels?: InventoryLevel[] | null;
+  /** @deprecated legacy table — prefer inventory_levels */
+  inventory?: { quantity: number; reserved: number } | null;
+};
 
 interface Props {
   variants: VariantWithInventory[];
@@ -23,8 +30,16 @@ interface Props {
   onSizeChange: (size: string) => void;
 }
 
-function availableStock(v: VariantWithInventory) {
-  return (v.inventory?.quantity ?? 0) - (v.inventory?.reserved ?? 0);
+function availableStock(v: VariantWithInventory): number {
+  // Prefer inventory_levels (source of truth)
+  if (v.inventory_levels && v.inventory_levels.length > 0) {
+    return v.inventory_levels.reduce(
+      (sum, l) => sum + Math.max(0, l.quantity - l.reserved),
+      0
+    );
+  }
+  // Fallback: legacy inventory table (backward compat only)
+  return Math.max(0, (v.inventory?.quantity ?? 0) - (v.inventory?.reserved ?? 0));
 }
 
 export function VariantSelector({

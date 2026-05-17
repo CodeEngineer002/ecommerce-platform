@@ -1,12 +1,14 @@
 import { createClient } from "@/lib/supabase/client";
 import type { PaginatedResult, ProductFilters, ProductWithDetails } from "@/types";
 
-// Single source of truth for the product join shape (used by API route, kept here for reference)
+// Single source of truth for the product join shape (used by API route, kept here for reference).
+// inventory_levels is the source of truth per CLAUDE.md Step 1 / migration 00017.
+// PostgREST returns it as an array (one-to-many); sum across rows to get total available.
 export const PRODUCT_SELECT = `
   *,
   category:categories!products_category_id_fkey(*),
   images:product_images(*),
-  variants:product_variants(*, inventory(*))
+  variants:product_variants(*, inventory_levels(quantity, reserved))
 ` as const;
 
 export async function getProducts(
@@ -116,7 +118,7 @@ export async function getSaleProducts(
   let query = supabase
     .from("products")
     .select(
-      `*, category:categories!products_category_id_fkey(*), images:product_images(*), variants:product_variants(*, inventory(*))`,
+      `*, category:categories!products_category_id_fkey(*), images:product_images(*), variants:product_variants(*, inventory_levels(quantity, reserved))`,
       { count: "exact" },
     )
     .eq("is_active", true)

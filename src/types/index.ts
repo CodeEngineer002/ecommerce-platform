@@ -27,11 +27,46 @@ export type CmsBanner = Database["public"]["Tables"]["cms_banners"]["Row"];
 export type MediaAsset = Database["public"]["Tables"]["media_assets"]["Row"];
 export type MediaFolder = Database["public"]["Tables"]["media_folders"]["Row"];
 
+// ─── Enriched variant type with identifier model fields (ADR-008) ─────────────
+/**
+ * Variant enriched with the full identifier model.
+ * These fields are added by migration 00025 and may be null for
+ * products created before that migration was applied.
+ */
+export type ProductVariantWithIdentifiers = ProductVariant & {
+  /** Standardized color abbreviation — BLK, BEI, OLV, NVY, CHR, etc. */
+  color_code: string | null;
+  /** Standardized size code — XS, S, M, L, XL, XXL, etc. */
+  size_code: string | null;
+  /** GTIN/EAN/UPC barcode for this specific variant */
+  barcode: string | null;
+  /** Supplier's own reference code for this variant — used for ERP reconciliation */
+  supplier_sku: string | null;
+  /** True if this is the canonical default variant shown on the PDP */
+  is_default: boolean;
+};
+
+/**
+ * Inventory level row from inventory_levels table (multi-warehouse, migration 00017).
+ * Used in admin contexts. Do NOT use the legacy inventory table.
+ */
+export type InventoryLevel = {
+  quantity: number;
+  reserved: number;
+};
+
 // ─── Enriched / composed types ────────────────────────────────────────────────
 export type ProductWithDetails = Product & {
+  /** product_code: human/business-readable product identifier (ADR-008, migration 00025) */
+  product_code?: string | null;
   category: Category | null;
   images: ProductImage[];
-  variants: (ProductVariant & { inventory: Inventory | null })[];
+  variants: (ProductVariantWithIdentifiers & {
+    /** Legacy inventory table — retained for backward compat only; prefer inventory_levels */
+    inventory?: Inventory | null;
+    /** Source of truth (migration 00017 / CLAUDE.md Step 1). Array: one row per warehouse. */
+    inventory_levels?: InventoryLevel[] | null;
+  })[];
   avg_rating?: number | null;
   review_count?: number;
 };
@@ -41,6 +76,35 @@ export type CartItemWithProduct = CartItem & {
     product: Product & { images: ProductImage[] };
   };
 };
+
+// ─── Admin-specific types ─────────────────────────────────────────────────────
+
+/** Flat inventory row for admin inventory table display */
+export interface AdminInventoryRow {
+  variantId: string;
+  productName: string;
+  productCode: string | null;
+  sku: string | null;
+  variantName: string;
+  color: string | null;
+  colorCode: string | null;
+  size: string | null;
+  sizeCode: string | null;
+  quantity: number;
+  reserved: number;
+  available: number;
+}
+
+/** Order item snapshot shape — captures all identifiers at purchase time (ADR-002) */
+export interface OrderItemSnapshot {
+  variant_id: string;
+  product_id: string | null;
+  product_code: string | null;
+  sku: string | null;
+  color: string | null;
+  size: string | null;
+  price_at_purchase: number;
+}
 
 export type OrderWithItems = Order & {
   items: OrderItem[];

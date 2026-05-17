@@ -28,7 +28,15 @@
       "description": "Immutable order record with pricing snapshot, item snapshots, and address snapshots",
       "key_columns": {
         "orders": ["id", "user_id", "order_number", "status", "item_count", "subtotal", "tax", "shipping", "discount", "total", "pricing_snapshot", "coupon_code", "notes", "metadata"],
-        "order_items": ["id", "order_id", "variant_id", "product_id", "quantity", "unit_price", "line_total", "status", "returned_quantity", "refunded_amount", "snapshot"],
+        "order_items": [
+          "id", "order_id", "variant_id", "product_id", "quantity", "unit_price", "line_total",
+          "status", "returned_quantity", "refunded_amount",
+          "sku — variant SKU snapshot at time of purchase (was null before migration 00025 fix)",
+          "product_code (migration 00025) — product code snapshot at time of purchase",
+          "color (migration 00025) — color value at time of purchase",
+          "size (migration 00025) — size value at time of purchase",
+          "snapshot (jsonb) — full snapshot: {variant_id, product_id, product_code, sku, color, size, price_at_purchase}"
+        ],
         "order_status_history": ["order_id", "from_status", "to_status", "reason", "metadata", "created_at"],
         "order_address_snapshots": ["id", "order_id", "address_type", "first_name", "last_name", "address_line1", "address_line2", "city", "state", "postal_code", "country_code", "country_name", "source_address_id"]
       }
@@ -46,12 +54,38 @@
     "product_catalog": {
       "tables": ["products", "product_variants", "product_images", "categories"],
       "primaryKey": "products.id",
-      "description": "Product catalog with variants, images, and category hierarchy",
+      "description": "Product catalog with variants, images, and category hierarchy. Two-level identifier model (ADR-008): product_code (product/style) + sku (variant/sellable).",
       "key_columns": {
-        "products": ["id", "name", "slug", "description", "base_price", "is_active", "is_featured", "category_id"],
-        "product_variants": ["id", "product_id", "price", "options", "sku", "is_active"],
-        "product_images": ["id", "product_id", "url", "alt", "sort_order"]
-      }
+        "products": [
+          "id",
+          "name",
+          "slug",
+          "description",
+          "base_price",
+          "is_active",
+          "is_featured",
+          "category_id",
+          "product_code (migration 00025) — unique human/business-readable product code e.g. FASH-003",
+          "sku — legacy product-level sku kept for backward compat; use product_code for new code"
+        ],
+        "product_variants": [
+          "id",
+          "product_id",
+          "price",
+          "options (jsonb: {color, size})",
+          "sku — unique sellable variant identifier e.g. FASH-003-BLK-XS",
+          "is_active",
+          "color_code (migration 00025) — standardized color abbreviation BLK/BEI/OLV/NVY/CHR",
+          "size_code (migration 00025) — standardized size code XS/S/M/L/XL/XXL",
+          "barcode (migration 00025) — GTIN/EAN/UPC nullable unique where not null",
+          "supplier_sku (migration 00025) — supplier reference code for ERP",
+          "is_default (migration 00025) — canonical default variant for PDP/admin"
+        ],
+        "product_images": ["id", "product_id", "variant_id", "url", "alt", "sort_order"]
+      },
+      "identifier_model_adr": "ADR-008",
+      "sku_generation": "src/domain/catalog/sku-generator.ts",
+      "catalog_errors": "src/domain/catalog/catalog-errors.ts"
     },
     "inventory": {
       "tables": ["inventory_levels", "inventory_movements", "warehouses"],

@@ -60,6 +60,15 @@ const DEFAULT_COUNTRY = "in";
 
 // ── Internal DB row types ──────────────────────────────────────────────────────
 
+type InventoryLevel = { quantity: number; reserved: number };
+
+// Helper: aggregate available stock across all warehouse rows.
+// inventory_levels is the source of truth (CLAUDE.md Step 1 / migration 00017).
+function sumAvailableStock(levels: InventoryLevel[] | null | undefined): number {
+  if (!levels || levels.length === 0) return 0;
+  return levels.reduce((sum, l) => sum + Math.max(0, l.quantity - l.reserved), 0);
+}
+
 type VariantWithProduct = {
   id: string;
   price: number | null;
@@ -73,7 +82,7 @@ type VariantWithProduct = {
     is_active: boolean;
     images: { url: string }[];
   } | null;
-  inventory: { quantity: number; reserved: number } | null;
+  inventory_levels: InventoryLevel[] | null;
 };
 
 // ── Ownership assertion ───────────────────────────────────────────────────────
@@ -97,7 +106,7 @@ async function fetchVariant(variantId: string): Promise<VariantWithProduct> {
   const { data } = await db
     .from("product_variants")
     .select(
-      "id, price, is_active, options, sku, product:products(id, name, base_price, is_active, images:product_images(url)), inventory(quantity, reserved)",
+      "id, price, is_active, options, sku, product:products(id, name, base_price, is_active, images:product_images(url)), inventory_levels(quantity, reserved)",
     )
     .eq("id", variantId)
     .single();
@@ -110,7 +119,7 @@ async function fetchVariant(variantId: string): Promise<VariantWithProduct> {
   const product = Array.isArray(variant.product) ? variant.product[0] : variant.product;
   if (!product || !product.is_active) throw new ProductUnavailableError(product?.name ?? variantId);
 
-  return { ...variant, product, inventory: Array.isArray(variant.inventory) ? variant.inventory[0] : variant.inventory };
+  return { ...variant, product, inventory_levels: Array.isArray(variant.inventory_levels) ? variant.inventory_levels : (variant.inventory_levels ? [variant.inventory_levels] : null) };
 }
 
 // ── Cart summary builder ──────────────────────────────────────────────────────
@@ -139,15 +148,15 @@ async function buildCartSummary(cartId: string): Promise<CartSummary> {
   const { data: variants } = await db
     .from("product_variants")
     .select(
-      "id, price, is_active, sku, product:products(id, name, base_price, is_active, images:product_images(url)), inventory(quantity, reserved)",
+      "id, price, is_active, sku, product:products(id, name, base_price, is_active, images:product_images(url)), inventory_levels(quantity, reserved)",
     )
     .in("id", variantIds);
 
   const variantMap = new Map<string, VariantWithProduct>();
   for (const v of (variants ?? []) as unknown as VariantWithProduct[]) {
     const product = Array.isArray(v.product) ? v.product[0] : v.product;
-    const inventory = Array.isArray(v.inventory) ? v.inventory[0] : v.inventory;
-    variantMap.set(v.id, { ...v, product: product ?? null, inventory: inventory ?? null });
+    const levels = Array.isArray(v.inventory_levels) ? v.inventory_levels : (v.inventory_levels ? [v.inventory_levels] : null);
+    variantMap.set(v.id, { ...v, product: product ?? null, inventory_levels: levels });
   }
 
   const items: CartItemDetail[] = [];
@@ -165,9 +174,7 @@ async function buildCartSummary(cartId: string): Promise<CartSummary> {
     }
 
     const currentPrice = variant.price ?? variant.product.base_price;
-    const available = variant.inventory
-      ? Math.max(0, variant.inventory.quantity - variant.inventory.reserved)
-      : 0;
+    const available = sumAvailableStock(variant.inventory_levels);
 
     // Stale price detection
     const snapshotPrice = raw.unit_price_snapshot;
@@ -403,9 +410,7 @@ export async function addCartItem(
 
   // Server-side variant + stock validation
   const variant = await fetchVariant(input.variant_id);
-  const available = variant.inventory
-    ? Math.max(0, variant.inventory.quantity - variant.inventory.reserved)
-    : 0;
+  const available = sumAvailableStock(variant.inventory_levels);
 
   // Check if already in cart
   const { data: existing } = await db
@@ -480,9 +485,7 @@ export async function updateCartItemQuantity(
 
   // Stock check
   const variant = await fetchVariant(variantId);
-  const available = variant.inventory
-    ? Math.max(0, variant.inventory.quantity - variant.inventory.reserved)
-    : 0;
+  const available = sumAvailableStock(variant.inventory_levels);
   if (available < quantity) throw new QuantityExceedsStockError(available);
 
   await db
