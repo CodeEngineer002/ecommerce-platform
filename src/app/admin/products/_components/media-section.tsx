@@ -2,7 +2,7 @@
 
 import { GripVertical, ImageIcon, Star, Trash2, Upload } from "lucide-react";
 import Image from "next/image";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,30 @@ export function MediaSection({ productId, images, variants = [] }: Props) {
   // ── Drag-to-reorder ─────────────────────────────────────────────────────────
 
   const sorted = [...images].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+  // Derive unique color groups from variants.
+  // Each color maps to a "representative" variant (is_default preferred, else first found).
+  // Used so admin assigns images to a color, not to a specific size variant.
+  const colorGroups = useMemo(() => {
+    const map = new Map<string, { color: string; representativeId: string }>();
+    for (const v of variants) {
+      const color = (v.options as Record<string, string> | null)?.color;
+      if (!color) continue;
+      if (!map.has(color)) map.set(color, { color, representativeId: v.id });
+      if (v.is_default) map.set(color, { color, representativeId: v.id });
+    }
+    return [...map.values()];
+  }, [variants]);
+
+  // Reverse map: variantId → color label (to show current assignment on each card)
+  const variantIdToColor = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const v of variants) {
+      const color = (v.options as Record<string, string> | null)?.color;
+      if (color) map.set(v.id, color);
+    }
+    return map;
+  }, [variants]);
 
   function handleDragEnd() {
     if (dragIdx === null || dropIdx === null || dragIdx === dropIdx) {
@@ -221,29 +245,50 @@ export function MediaSection({ productId, images, variants = [] }: Props) {
                       </p>
                     )}
 
-                    {/* Variant assignment */}
-                    {variants.length > 0 && (
-                      <select
-                        className="w-full rounded border bg-background px-1 py-0.5 text-[10px] text-muted-foreground"
-                        value={(img as ProductImage & { variant_id?: string | null }).variant_id ?? ""}
-                        onChange={(e) =>
-                          assignVariant({
-                            imageId: img.id,
-                            variantId: e.target.value || null,
-                            productId,
-                          })
-                        }
-                      >
-                        <option value="">No variant</option>
-                        {variants.map((v) => {
-                          const opts = (v.options ?? {}) as Record<string, string>;
-                          const label = [opts.color, opts.size].filter(Boolean).join(" / ") || v.name;
-                          return (
-                            <option key={v.id} value={v.id}>{label}</option>
-                          );
-                        })}
-                      </select>
-                    )}
+                    {/* Color / variant assignment */}
+                    {variants.length > 0 && (() => {
+                      const currentVid = (img as ProductImage & { variant_id?: string | null }).variant_id;
+                      // Color+size product: show color-group dropdown
+                      if (colorGroups.length > 0) {
+                        const currentColor = currentVid ? (variantIdToColor.get(currentVid) ?? "") : "";
+                        return (
+                          <select
+                            className="w-full rounded border bg-background px-1 py-0.5 text-[10px] text-muted-foreground"
+                            value={currentColor}
+                            onChange={(e) => {
+                              const group = colorGroups.find((g) => g.color === e.target.value);
+                              assignVariant({
+                                imageId: img.id,
+                                variantId: group?.representativeId ?? null,
+                                productId,
+                              });
+                            }}
+                          >
+                            <option value="">Shared (all colors)</option>
+                            {colorGroups.map((g) => (
+                              <option key={g.color} value={g.color}>{g.color}</option>
+                            ))}
+                          </select>
+                        );
+                      }
+                      // Flat variant product: original dropdown
+                      return (
+                        <select
+                          className="w-full rounded border bg-background px-1 py-0.5 text-[10px] text-muted-foreground"
+                          value={currentVid ?? ""}
+                          onChange={(e) =>
+                            assignVariant({ imageId: img.id, variantId: e.target.value || null, productId })
+                          }
+                        >
+                          <option value="">No variant</option>
+                          {variants.map((v) => {
+                            const opts = (v.options ?? {}) as Record<string, string>;
+                            const label = [opts.color, opts.size].filter(Boolean).join(" / ") || v.name;
+                            return <option key={v.id} value={v.id}>{label}</option>;
+                          })}
+                        </select>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}

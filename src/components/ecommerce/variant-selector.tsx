@@ -4,6 +4,11 @@ import { cn } from "@/lib/utils";
 import type { ProductVariant } from "@/types";
 
 const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL"];
+const SHOE_SIZE_ORDER = [
+  "UK5", "UK6", "UK7", "UK8", "UK9", "UK10", "UK11", "UK12", "UK13",
+  "EU38", "EU39", "EU40", "EU41", "EU42", "EU43", "EU44", "EU45", "EU46",
+  "US6", "US7", "US8", "US9", "US10", "US11", "US12", "US13",
+];
 
 const COLOR_SWATCHES: Record<string, string> = {
   Black: "#1a1a1a",
@@ -56,9 +61,24 @@ export function VariantSelector({
 
   const colors = [...new Set(options.map((o) => o.color).filter(Boolean))];
 
-  const sizesForColor = SIZE_ORDER.filter((s) =>
-    options.some((o) => o.color === selectedColor && o.size === s)
-  );
+  const rawSizesForColor = [
+    ...new Set(
+      options
+        .filter((o) => o.color === selectedColor && o.size)
+        .map((o) => o.size)
+    ),
+  ];
+
+  const sizesForColor = (() => {
+    const clothing = SIZE_ORDER.filter((s) => rawSizesForColor.includes(s));
+    if (clothing.length > 0) return clothing;
+    const shoe = SHOE_SIZE_ORDER.filter((s) => rawSizesForColor.includes(s));
+    if (shoe.length > 0) return shoe;
+    // Fallback: alphabetical / natural sort
+    return [...rawSizesForColor].sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true })
+    );
+  })();
 
   const selectedColorVariant = options.find(
     (o) => o.color === selectedColor && o.size === selectedSize

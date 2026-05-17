@@ -1,5 +1,6 @@
 "use client";
 
+import { ImageOff } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
@@ -27,8 +28,13 @@ export function ProductGallery({
 }: ProductGalleryProps) {
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // When the selected variant changes externally (variant button click),
-  // find the matching image and update activeIndex.
+  // Reset to first image when the image set changes (e.g., color switch sends new images array)
+  const firstImageId = images[0]?.id;
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [firstImageId]);
+
+  // For flat-variant products: sync to selected variant's image when changed externally
   useEffect(() => {
     if (!selectedVariantId) return;
     const idx = images.findIndex((img) => img.variant_id === selectedVariantId);
@@ -38,7 +44,12 @@ export function ProductGallery({
   const activeImage = images[activeIndex];
 
   if (!images.length) {
-    return <div className="aspect-square w-full rounded-lg bg-muted" />;
+    return (
+      <div className="aspect-square w-full rounded-lg bg-muted flex flex-col items-center justify-center gap-3">
+        <ImageOff className="h-14 w-14 text-muted-foreground/40" />
+        <p className="text-sm text-muted-foreground">No preview available</p>
+      </div>
+    );
   }
 
   const handleThumbnailClick = (i: number) => {

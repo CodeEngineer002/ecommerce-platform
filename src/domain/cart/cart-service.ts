@@ -69,6 +69,8 @@ function sumAvailableStock(levels: InventoryLevel[] | null | undefined): number 
   return levels.reduce((sum, l) => sum + Math.max(0, l.quantity - l.reserved), 0);
 }
 
+type ImageVariant = { options: Record<string, string> | null } | null;
+
 type VariantWithProduct = {
   id: string;
   price: number | null;
@@ -80,7 +82,13 @@ type VariantWithProduct = {
     name: string;
     base_price: number;
     is_active: boolean;
-    images: { url: string }[];
+    images: {
+      url: string;
+      alt_text?: string | null;
+      variant_id?: string | null;
+      /** Nested variant options — used to match colour across sizes (e.g. Black/UK6 image → Black/UK9 cart item) */
+      variant?: ImageVariant;
+    }[];
   } | null;
   inventory_levels: InventoryLevel[] | null;
 };
@@ -106,7 +114,7 @@ async function fetchVariant(variantId: string): Promise<VariantWithProduct> {
   const { data } = await db
     .from("product_variants")
     .select(
-      "id, price, is_active, options, sku, product:products(id, name, base_price, is_active, images:product_images(url)), inventory_levels(quantity, reserved)",
+      "id, price, is_active, options, sku, product:products(id, name, base_price, is_active, images:product_images(url, alt_text, variant_id, variant:product_variants(options))), inventory_levels(quantity, reserved)",
     )
     .eq("id", variantId)
     .single();
@@ -150,7 +158,7 @@ async function buildCartSummary(cartId: string): Promise<CartSummary> {
   const { data: variants } = await db
     .from("product_variants")
     .select(
-      "id, price, is_active, sku, options, product:products(id, name, base_price, is_active, images:product_images(url, alt_text)), inventory_levels(quantity, reserved)",
+      "id, price, is_active, sku, options, product:products(id, name, base_price, is_active, images:product_images(url, alt_text, variant_id, variant:product_variants(options))), inventory_levels(quantity, reserved)",
     )
     .in("id", variantIds);
 
@@ -212,17 +220,25 @@ async function buildCartSummary(cartId: string): Promise<CartSummary> {
       warnings.push({ type: "LOW_STOCK", variant_id: raw.variant_id, available, product_name: variant.product.name });
     }
 
-    const images = (variant.product.images ?? []) as { url: string; alt_text?: string | null }[];
-    // Prefer the colour-specific image (alt_text contains the colour name, e.g. "Black").
-    // Falls back to the first product image if no colour match is found.
+    const images = variant.product.images ?? [];
     const variantColor =
       typeof variant.options === "object" && variant.options !== null
         ? (variant.options as Record<string, string>).color ?? null
         : null;
-    const colorImage = variantColor
+    // Priority 1: image directly assigned to this exact variant
+    const directImage = images.find((img) => img.variant_id === variant.id);
+    // Priority 2: image assigned to any variant of the same colour (different size e.g. Black/UK6 → Black/UK9)
+    const sameColorImage = !directImage && variantColor
+      ? images.find((img) => {
+          const imgColor = (img.variant as ImageVariant)?.options?.color;
+          return imgColor?.toLowerCase() === variantColor.toLowerCase();
+        })
+      : null;
+    // Priority 3: alt_text contains the colour name (legacy fallback)
+    const colorAltImage = !directImage && !sameColorImage && variantColor
       ? images.find((img) => img.alt_text?.toLowerCase().includes(variantColor.toLowerCase()))
       : null;
-    const imageUrl = (colorImage ?? images[0])?.url ?? null;
+    const imageUrl = (directImage ?? sameColorImage ?? colorAltImage ?? images[0])?.url ?? null;
 
     items.push({
       id: raw.id,

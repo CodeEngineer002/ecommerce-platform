@@ -70,34 +70,43 @@ export function ProductDetailClient({ product, children }: Props) {
 
   const selectedVariantId = selectedVariant?.id ?? null;
 
-  // Map: color → the variant_id that has a linked product_image (canonical per color)
-  const colorToGalleryVariantId = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const img of product.images) {
-      if (!img.variant_id) continue;
-      const v = activeVariants.find((vv) => vv.id === img.variant_id);
-      const opts = v?.options as { color?: string } | null;
-      if (opts?.color && !map[opts.color]) {
-        map[opts.color] = img.variant_id;
-      }
+  // Reverse map: variantId → color string
+  const variantIdToColor = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const v of activeVariants) {
+      const opts = v.options as { color?: string } | null;
+      if (opts?.color) map.set(v.id, opts.color);
     }
     return map;
-  }, [product.images, activeVariants]);
+  }, [activeVariants]);
 
-  // Variant ID forwarded to gallery for image sync
-  const galleryVariantId = hasColorSize
-    ? (selectedColor ? colorToGalleryVariantId[selectedColor] ?? null : null)
-    : selectedVariantId;
-
-  // Thumbnail click: in color+size mode, resolve to a color change
-  const handleVariantImageClick = (variantId: string) => {
-    if (hasColorSize) {
-      const v = activeVariants.find((vv) => vv.id === variantId);
-      const opts = v?.options as { color?: string } | null;
-      if (opts?.color) handleColorChange(opts.color);
-    } else {
-      setFlatVariantId(variantId);
+  // Group product images by color (via assigned variant_id → color lookup)
+  const imagesByColor = useMemo(() => {
+    const map = new Map<string, typeof product.images>();
+    for (const img of product.images) {
+      const vid = (img as typeof img & { variant_id?: string | null }).variant_id;
+      if (!vid) continue;
+      const color = variantIdToColor.get(vid);
+      if (!color) continue;
+      if (!map.has(color)) map.set(color, []);
+      map.get(color)!.push(img);
     }
+    return map;
+  }, [product.images, variantIdToColor]);
+
+  // Images shown in gallery — strictly filtered to selected color.
+  // Returns empty array when no color-specific images exist so the gallery
+  // shows a "No preview available" placeholder instead of unrelated images.
+  const displayImages = useMemo(() => {
+    if (!hasColorSize || !selectedColor) return product.images;
+    const colorImgs = imagesByColor.get(selectedColor);
+    if (colorImgs && colorImgs.length > 0) return colorImgs;
+    return [];
+  }, [hasColorSize, selectedColor, imagesByColor, product.images]);
+
+  // Thumbnail click: in flat mode only — color+size mode handles it via color swatch
+  const handleVariantImageClick = (variantId: string) => {
+    if (!hasColorSize) setFlatVariantId(variantId);
   };
 
   const handleColorChange = (color: string) => {
@@ -111,12 +120,12 @@ export function ProductDetailClient({ product, children }: Props) {
 
   return (
     <div className="grid gap-8 lg:grid-cols-2">
-      {/* Left column — ALL product images so thumbnails always show */}
+      {/* Left column — color-filtered images; gallery resets via firstImageId effect */}
       <ProductGallery
-        images={product.images}
+        images={displayImages}
         productName={product.name}
-        selectedVariantId={galleryVariantId}
-        onVariantImageClick={handleVariantImageClick}
+        selectedVariantId={hasColorSize ? undefined : selectedVariantId}
+        onVariantImageClick={hasColorSize ? undefined : handleVariantImageClick}
       />
 
       {/* Right column — server-rendered metadata + interactive controls */}
