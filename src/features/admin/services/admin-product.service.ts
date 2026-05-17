@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { ProductFormData } from "@/lib/validators";
 import type { Product, ProductImage, ProductVariant } from "@/types";
 
-const ADMIN_PRODUCT_PAGE_SIZE = 20;
+const ADMIN_PRODUCT_PAGE_SIZE = 50;
 
 export async function adminGetProducts(page = 1) {
   const supabase = createClient();

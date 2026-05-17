@@ -180,6 +180,38 @@
         "On order delivery: quantity -= qty (actual stock deduction)"
       ]
     },
+    "admin_stock_adjustment": {
+      "title": "Admin Stock Adjustment (Audited)",
+      "trigger": "Admin clicks 'Adjust' on any inventory cell or SKU row",
+      "chosen_behavior": "Two-step atomic write: (1) UPSERT inventory_levels, (2) INSERT inventory_movements",
+      "invariants": [
+        "Every admin stock change creates an inventory_movements record (source_type='admin')",
+        "adjustment_reason is always set for admin adjustments",
+        "previous_quantity and new_quantity are always captured in the movement record",
+        "Stock cannot go below 0 (computeNewQuantity enforces Math.max(0, ...))"
+      ],
+      "flow": [
+        "User clicks Adjust button on MatrixView cell or SkuTable row",
+        "AdjustmentModal opens with prefilled current quantity and variant details",
+        "User selects operation (increase/decrease/set), enters amount, picks reason, optional note",
+        "Preview line shows: stock will change from X → Y",
+        "Submit calls recordStockAdjustment() in admin-inventory.service.ts",
+        "Service: SELECT current qty from inventory_levels (default warehouse)",
+        "Service: computeNewQuantity(operation, current, input)",
+        "Service: UPSERT inventory_levels SET quantity = newQty",
+        "Service: INSERT inventory_movements with adjustment_reason, source_type='admin', created_by",
+        "Modal closes, useStockAdjustment invalidates adminProducts.all + inventory_movements cache",
+        "Toast: 'Stock updated: X → Y'"
+      ],
+      "adjustment_reasons": ["new_inventory_received", "damaged_stock", "manual_correction", "return_restocked", "warehouse_transfer", "audit_correction"],
+      "files": {
+        "service": "src/features/admin/services/admin-inventory.service.ts",
+        "hook": "src/features/admin/hooks/use-admin-inventory.ts",
+        "modal": "src/app/admin/inventory/_components/adjustment-modal.tsx",
+        "migration": "supabase/migrations/00026_inventory_adjustment_reasons.sql"
+      },
+      "adr": "ADR-009"
+    },
     "locale_detection": {
       "title": "Locale Detection & Routing",
       "trigger": "Any storefront HTTP request",

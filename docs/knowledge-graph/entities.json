@@ -88,14 +88,21 @@
       "catalog_errors": "src/domain/catalog/catalog-errors.ts"
     },
     "inventory": {
-      "tables": ["inventory_levels", "inventory_movements", "warehouses"],
+      "tables": ["inventory_levels", "inventory_movements", "warehouses", "country_inventory"],
       "primaryKey": "inventory_levels.variant_id + inventory_levels.warehouse_id",
-      "description": "Inventory levels (quantity - reserved = available) with full audit movements",
+      "description": "Inventory levels (quantity - reserved = available) with full audit movement trail. inventory_levels is single source of truth. inventory_movements tracks every change with context.",
+      "source_of_truth": "inventory_levels",
       "key_columns": {
-        "inventory_levels": ["variant_id", "warehouse_id", "quantity", "reserved"],
-        "inventory_movements": ["id", "variant_id", "type", "quantity", "previous_quantity", "new_quantity", "source_type", "source_id", "note", "created_by"],
-        "warehouses": ["id", "name", "is_default", "is_active"]
-      }
+        "inventory_levels": ["id", "variant_id", "warehouse_id", "quantity", "reserved", "reorder_point", "max_quantity", "updated_at"],
+        "inventory_movements": ["id", "variant_id", "type", "quantity", "previous_quantity", "new_quantity", "source_type", "source_id", "reference_id", "note", "adjustment_reason", "created_by", "created_at"],
+        "warehouses": ["id", "code", "name", "country_id", "is_default", "is_active", "address"],
+        "country_inventory": ["variant_id", "country_id", "quantity", "reserved"]
+      },
+      "inventory_movement_types": ["purchase", "sale", "return", "adjustment", "transfer"],
+      "adjustment_reasons": ["new_inventory_received", "damaged_stock", "manual_correction", "return_restocked", "warehouse_transfer", "audit_correction"],
+      "admin_ux_adr": "ADR-009",
+      "admin_service": "src/features/admin/services/admin-inventory.service.ts",
+      "admin_hooks": "src/features/admin/hooks/use-admin-inventory.ts"
     },
     "coupon": {
       "tables": ["coupons", "coupon_usage"],

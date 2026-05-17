@@ -140,6 +140,34 @@
       "summary": "CMS content delivery should be abstracted from storage mechanism. Future: headless CMS swap possible."
     },
     {
+      "id": "ADR-009",
+      "title": "Enterprise Inventory UX Architecture",
+      "file": "docs/ADRs/ADR-009-inventory-ux-architecture.md",
+      "status": "Accepted",
+      "date": "2026-05-17",
+      "domains": ["inventory", "admin"],
+      "summary": "Multi-view admin inventory system: tabbed Overview/Matrix/SKU/History views, audited stock adjustment modal writing to inventory_movements, movement history UI, pagination at 50 products/page.",
+      "key_invariants": [
+        "Every admin stock change writes an inventory_movements record (source_type='admin')",
+        "adjustment_reason is always set for admin adjustments",
+        "computeNewQuantity() enforces floor of 0 — stock cannot go negative",
+        "inventory_levels remains single source of truth — page reads from it exclusively",
+        "existing hooks (useAdminProducts, useAdminUpdateInventory) are preserved for backward compat"
+      ],
+      "migration": "supabase/migrations/00026_inventory_adjustment_reasons.sql",
+      "new_files": [
+        "src/features/admin/services/admin-inventory.service.ts",
+        "src/features/admin/hooks/use-admin-inventory.ts",
+        "src/app/admin/inventory/_components/adjustment-modal.tsx",
+        "src/app/admin/inventory/_components/overview-tab.tsx",
+        "src/app/admin/inventory/_components/matrix-view.tsx",
+        "src/app/admin/inventory/_components/sku-table.tsx",
+        "src/app/admin/inventory/_components/history-tab.tsx",
+        "src/app/admin/inventory/shared-types.ts",
+        "src/tests/unit/inventory-matrix.test.ts"
+      ]
+    },
+    {
       "id": "ADR-010",
       "title": "Multi-Currency Architecture",
       "status": "Proposed",
