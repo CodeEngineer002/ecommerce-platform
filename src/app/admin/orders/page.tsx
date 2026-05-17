@@ -16,7 +16,11 @@ import { ORDER_STATUSES } from "@/lib/constants";
 import { formatDate, formatPrice } from "@/lib/utils";
 import type { OrderStatus, OrderWithItems } from "@/types";
 
-/** Valid next statuses for each current status — mirrors DB update_order_status logic */
+/**
+ * Valid next statuses for each current status.
+ * Must stay in sync with ORDER_TRANSITIONS in domain/order/order-state-machine.ts
+ * and the DB update_order_status() function.
+ */
 const ALLOWED_TRANSITIONS: Record<string, OrderStatus[]> = {
   draft:                   ["pending", "pending_payment", "cancelled"],
   pending:                 ["confirmed", "pending_payment", "cancelled"],
@@ -26,7 +30,9 @@ const ALLOWED_TRANSITIONS: Record<string, OrderStatus[]> = {
   packed:                  ["shipped", "cancelled"],
   shipped:                 ["out_for_delivery", "delivered", "cancelled"],
   out_for_delivery:        ["delivered"],
-  delivered:               ["return_requested", "replacement_requested", "refund_requested"],
+  // After delivery: direct refund/partial paths added alongside the return/replace flow
+  delivered:               ["return_requested", "replacement_requested", "refund_requested",
+                            "partially_returned", "partially_refunded", "refunded"],
   return_requested:        ["return_approved", "return_rejected"],
   return_approved:         ["return_in_transit"],
   return_in_transit:       ["returned"],
@@ -36,10 +42,17 @@ const ALLOWED_TRANSITIONS: Record<string, OrderStatus[]> = {
   replacement_shipped:     ["replacement_delivered"],
   refund_requested:        ["refund_processing"],
   refund_processing:       ["refunded", "partially_refunded"],
-  partially_returned:      ["return_requested", "refunded", "partially_refunded"],
+  // Partial return can still trigger another return/replace/refund cycle
+  partially_returned:      ["return_requested", "replacement_requested", "refund_requested",
+                            "refunded", "partially_refunded"],
   partially_refunded:      ["refunded"],
   cancelled:               ["refunded"],
   failed:                  ["pending_payment"],
+  // Terminal states — no further transitions
+  return_rejected:         [],
+  replacement_rejected:    [],
+  replacement_delivered:   [],
+  refunded:                [],
 };
 
 const columns = (

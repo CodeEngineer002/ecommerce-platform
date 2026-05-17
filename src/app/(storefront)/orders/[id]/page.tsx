@@ -1,4 +1,5 @@
 import { ArrowLeft } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -51,6 +52,33 @@ export default async function OrderDetailPage({ params }: Props) {
     tracking_url: string | null;
     estimated_delivery: string | null;
   };
+
+  // Fetch color-aware images for all order items
+  const variantIds = order.items
+    .map((i) => (i as typeof i & { variant_id?: string | null }).variant_id)
+    .filter(Boolean) as string[];
+
+  type ImgRow = { url: string; alt_text?: string | null; variant_id?: string | null; variant?: { options?: Record<string, string> | null } | null };
+  type VarRow  = { id: string; options: Record<string, string> | null; product: { images: ImgRow[] } | null };
+
+  const itemImageMap = new Map<string, string>();
+  if (variantIds.length > 0) {
+    const { data: varRows } = await supabase
+      .from("product_variants")
+      .select("id, options, product:products(images:product_images(url, alt_text, variant_id, variant:product_variants(options)))")
+      .in("id", variantIds);
+
+    for (const v of (varRows ?? []) as unknown as VarRow[]) {
+      const color = v.options?.color?.toLowerCase();
+      const imgs = (v.product?.images ?? []) as ImgRow[];
+      const direct = imgs.find((img) => img.variant_id === v.id);
+      const sameColor = !direct && color
+        ? imgs.find((img) => img.variant?.options?.color?.toLowerCase() === color)
+        : null;
+      const url = (direct ?? sameColor ?? imgs[0])?.url;
+      if (url) itemImageMap.set(v.id, url);
+    }
+  }
 
   const canCancel = isOrderCancellable(order.status as Parameters<typeof isOrderCancellable>[0]);
   const canReturn = ["delivered", "partially_returned"].includes(order.status);
@@ -142,20 +170,42 @@ export default async function OrderDetailPage({ params }: Props) {
             </CardHeader>
             <CardContent>
               <ul className="divide-y">
-                {order.items.map((item) => (
-                  <li key={item.id} className="flex justify-between py-3 text-sm">
-                    <div>
-                      <p className="font-medium">{item.product_name}</p>
-                      {item.variant_name && (
-                        <p className="text-xs text-muted-foreground">{item.variant_name}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        {formatPrice(item.unit_price)} × {item.quantity}
-                      </p>
-                    </div>
-                    <span className="font-medium">{formatPrice(item.total)}</span>
-                  </li>
-                ))}
+                {order.items.map((item) => {
+                  const variantId = (item as typeof item & { variant_id?: string | null }).variant_id;
+                  const imageUrl = variantId ? itemImageMap.get(variantId) : undefined;
+                  return (
+                    <li key={item.id} className="flex items-center gap-3 py-4 text-sm">
+                      {/* Product image */}
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border bg-muted">
+                        {imageUrl ? (
+                          <Image
+                            src={imageUrl}
+                            alt={item.product_name}
+                            fill
+                            className="object-cover"
+                            sizes="64px"
+                          />
+                        ) : (
+                          <div className="h-full w-full bg-muted" />
+                        )}
+                      </div>
+
+                      {/* Item details */}
+                      <div className="flex flex-1 items-center justify-between gap-2">
+                        <div>
+                          <p className="font-medium">{item.product_name}</p>
+                          {item.variant_name && (
+                            <p className="text-xs text-muted-foreground">{item.variant_name}</p>
+                          )}
+                          <p className="text-xs text-muted-foreground">
+                            {formatPrice(item.unit_price)} × {item.quantity}
+                          </p>
+                        </div>
+                        <span className="font-semibold">{formatPrice(item.total)}</span>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </CardContent>
           </Card>

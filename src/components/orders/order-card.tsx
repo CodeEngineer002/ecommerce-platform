@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import {
   CheckCircle2,
@@ -27,7 +28,9 @@ interface OrderItem {
   product_name: string;
   variant_name: string | null;
   quantity:     number;
+  unit_price:   number;
   total:        number;
+  image_url:    string | null;
 }
 
 interface ReturnRow {
@@ -49,6 +52,8 @@ export interface OrderCardData {
   items:          OrderItem[];
   returns:        ReturnRow[];
   hasTracking:    boolean;
+  /** ISO timestamp of when the order was marked delivered (from order_status_history) */
+  delivered_at:   string | null;
 }
 
 interface Props {
@@ -224,6 +229,20 @@ export function OrderCard({ order, orderHref, returnHref, fmt }: Props) {
           <p className="px-5 pt-1.5 text-xs text-muted-foreground">{journey.hint}</p>
         )}
 
+        {/* Delivery date + time — shown only for delivered orders */}
+        {status === "delivered" && order.delivered_at && (
+          <p className="px-5 pt-1 text-xs font-medium text-green-600 dark:text-green-400">
+            Delivered on{" "}
+            {new Date(order.delivered_at).toLocaleDateString("en-IN", {
+              day: "numeric", month: "short", year: "numeric",
+            })}{" "}
+            at{" "}
+            {new Date(order.delivered_at).toLocaleTimeString("en-IN", {
+              hour: "2-digit", minute: "2-digit", hour12: true,
+            })}
+          </p>
+        )}
+
         {/* Mini progress bar */}
         <div className="px-5 pt-3">
           <MiniProgress status={status} />
@@ -232,15 +251,34 @@ export function OrderCard({ order, orderHref, returnHref, fmt }: Props) {
         {/* Items (collapsed — show first 2 only) */}
         <div className="mx-5 mt-3 divide-y rounded-md border bg-background">
           {order.items.slice(0, 2).map((item) => (
-            <div key={item.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
-              <div className="min-w-0">
+            <div key={item.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+              {/* Thumbnail */}
+              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded border bg-muted">
+                {item.image_url ? (
+                  <Image
+                    src={item.image_url}
+                    alt={item.product_name}
+                    fill
+                    className="object-cover"
+                    sizes="56px"
+                  />
+                ) : (
+                  <div className="h-full w-full bg-muted" />
+                )}
+              </div>
+
+              {/* Details */}
+              <div className="min-w-0 flex-1">
                 <p className="font-medium truncate">{item.product_name}</p>
                 {item.variant_name && (
                   <p className="text-xs text-muted-foreground">{item.variant_name}</p>
                 )}
-                <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                <p className="text-xs text-muted-foreground">
+                  {fmt(item.unit_price)} × {item.quantity}
+                </p>
               </div>
-              <span className="shrink-0 font-medium text-sm">{fmt(item.total)}</span>
+
+              <span className="shrink-0 font-semibold text-sm">{fmt(item.total)}</span>
             </div>
           ))}
           {order.items.length > 2 && (

@@ -94,7 +94,7 @@ export const POST = withApiHandler(
       p_order_id: orderId,
       p_user_id:  user.id,
       p_reason:   reason,
-      p_items:    JSON.stringify(items),
+      p_items:    items as unknown as string, // jsonb — Supabase client serialises array to JSON automatically
     });
 
     if (error) {

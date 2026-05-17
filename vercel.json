@@ -1,0 +1,24 @@
+{
+  "crons": [
+    {
+      "path": "/api/jobs/auto-queue-orders",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/jobs/cancel-unpaid-orders",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/jobs/detect-stuck-orders",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/jobs/reconcile-cod",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/jobs/expire-abandoned-carts",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

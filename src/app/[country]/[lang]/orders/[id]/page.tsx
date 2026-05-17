@@ -1,4 +1,5 @@
 import { ArrowLeft, Download } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -82,6 +83,39 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
 
   const typedReturns     = (returnsRaw ?? []) as unknown as ReturnRow[];
   const typedFulfillment = fulfillmentRaw as unknown as FulfillmentRow | null;
+
+  // Fetch color-aware product images for each order item
+  type ImgRow = { url: string; variant_id?: string | null; variant?: { options?: Record<string, string> | null } | null };
+  type VarRow  = { id: string; options: Record<string, string> | null; product: { images: ImgRow[] } | null };
+
+  const itemImageMap   = new Map<string, string>();
+  const itemVariantMap = new Map<string, { color?: string; size?: string }>();
+  const variantIds = (order.items as Array<{ variant_id?: string | null }>)
+    .map((i) => i.variant_id)
+    .filter((v): v is string => Boolean(v));
+
+  if (variantIds.length > 0) {
+    const { data: varRows } = await supabase
+      .from("product_variants")
+      .select("id, options, product:products(images:product_images(url, variant_id, variant:product_variants(options)))")
+      .in("id", variantIds);
+
+    for (const v of (varRows ?? []) as unknown as VarRow[]) {
+      const color = v.options?.color?.toLowerCase();
+      const imgs  = v.product?.images ?? [];
+      const direct    = imgs.find((img) => img.variant_id === v.id);
+      const sameColor = !direct && color
+        ? imgs.find((img) => img.variant?.options?.color?.toLowerCase() === color)
+        : null;
+      const url = (direct ?? sameColor ?? imgs[0])?.url;
+      if (url) itemImageMap.set(v.id, url);
+
+      // Store color + size for display
+      if (v.options?.color || v.options?.size) {
+        itemVariantMap.set(v.id, { color: v.options?.color, size: v.options?.size });
+      }
+    }
+  }
 
   const canCancel = isOrderCancellable(order.status as Parameters<typeof isOrderCancellable>[0]);
   const canReturn = ["delivered", "partially_returned"].includes(order.status);
@@ -185,20 +219,50 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
             </CardHeader>
             <CardContent>
               <ul className="divide-y">
-                {order.items.map((item) => (
-                  <li key={item.id} className="flex justify-between py-3 text-sm">
-                    <div>
-                      <p className="font-medium">{item.product_name}</p>
-                      {item.variant_name && (
-                        <p className="text-xs text-muted-foreground">{item.variant_name}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        {fmt(item.unit_price)} × {item.quantity}
-                      </p>
-                    </div>
-                    <span className="font-medium">{fmt(item.total)}</span>
-                  </li>
-                ))}
+                {order.items.map((item) => {
+                  const vid        = (item as typeof item & { variant_id?: string | null }).variant_id;
+                  const imageUrl   = vid ? itemImageMap.get(vid) : undefined;
+                  const variantInfo = vid ? itemVariantMap.get(vid) : undefined;
+
+                  // Build variant label: prefer stored variant_name, fall back to options
+                  const variantLabel = item.variant_name
+                    ?? (variantInfo
+                        ? [variantInfo.color, variantInfo.size].filter(Boolean).join(" / ")
+                        : null);
+
+                  return (
+                    <li key={item.id} className="flex items-center gap-3 py-4 text-sm">
+                      {/* Product thumbnail */}
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border bg-muted">
+                        {imageUrl ? (
+                          <Image
+                            src={imageUrl}
+                            alt={item.product_name}
+                            fill
+                            className="object-cover"
+                            sizes="64px"
+                          />
+                        ) : (
+                          <div className="h-full w-full bg-muted" />
+                        )}
+                      </div>
+
+                      {/* Item details */}
+                      <div className="flex flex-1 items-center justify-between gap-2">
+                        <div>
+                          <p className="font-medium">{item.product_name}</p>
+                          {variantLabel && (
+                            <p className="text-xs text-muted-foreground">{variantLabel}</p>
+                          )}
+                          <p className="text-xs text-muted-foreground">
+                            {fmt(item.unit_price)} × {item.quantity}
+                          </p>
+                        </div>
+                        <span className="font-semibold">{fmt(item.total)}</span>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </CardContent>
           </Card>

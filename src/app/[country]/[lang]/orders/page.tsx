@@ -43,12 +43,20 @@ export default async function LocaleOrdersPage({ params }: Props) {
         id,
         product_name,
         variant_name,
+        variant_id,
         quantity,
-        total
+        unit_price,
+        total,
+        color,
+        size
       ),
       returns:order_returns (
         id,
         status,
+        created_at
+      ),
+      status_history:order_status_history (
+        to_status,
         created_at
       )
     `)
@@ -66,11 +74,71 @@ export default async function LocaleOrdersPage({ params }: Props) {
 
   const trackedSet = new Set((fulfillments ?? []).map((f) => f.order_id));
 
-  const orders: OrderCardData[] = (ordersRaw ?? []).map((o) => ({
-    ...(o as unknown as Omit<OrderCardData, "returns" | "hasTracking">),
-    returns:     (o.returns ?? []) as OrderCardData["returns"],
-    hasTracking: trackedSet.has(o.id),
-  }));
+  // Collect all unique variant_ids across all orders to fetch images in one query
+  type RawItem = { id: string; product_name: string; variant_name: string | null; variant_id: string | null; quantity: number; unit_price: number; total: number; color: string | null; size: string | null };
+  type ImgRow  = { url: string; variant_id?: string | null; variant?: { options?: Record<string, string> | null } | null };
+  type VarRow  = { id: string; options: Record<string, string> | null; product: { images: ImgRow[] } | null };
+
+  const allVariantIds = [...new Set(
+    (ordersRaw ?? [])
+      .flatMap((o) => (o.items as unknown as RawItem[]).map((i) => i.variant_id))
+      .filter((v): v is string => Boolean(v))
+  )];
+
+  const imageMap   = new Map<string, string>();
+  const variantMap = new Map<string, { color?: string; size?: string }>();
+
+  if (allVariantIds.length > 0) {
+    const { data: varRows } = await supabase
+      .from("product_variants")
+      .select("id, options, product:products(images:product_images(url, variant_id, variant:product_variants(options)))")
+      .in("id", allVariantIds);
+
+    for (const v of (varRows ?? []) as unknown as VarRow[]) {
+      const color = v.options?.color?.toLowerCase();
+      const imgs  = v.product?.images ?? [];
+      const direct    = imgs.find((img) => img.variant_id === v.id);
+      const sameColor = !direct && color
+        ? imgs.find((img) => img.variant?.options?.color?.toLowerCase() === color)
+        : null;
+      const url = (direct ?? sameColor ?? imgs[0])?.url;
+      if (url) imageMap.set(v.id, url);
+      if (v.options?.color || v.options?.size) {
+        variantMap.set(v.id, { color: v.options?.color, size: v.options?.size });
+      }
+    }
+  }
+
+  type HistoryRow = { to_status: string; created_at: string };
+
+  const orders: OrderCardData[] = (ordersRaw ?? []).map((o) => {
+    // Find when the order was marked delivered from status history
+    const history = (o as unknown as { status_history?: HistoryRow[] }).status_history ?? [];
+    const deliveredEntry = history
+      .filter((h) => h.to_status === "delivered")
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+    return {
+    ...(o as unknown as Omit<OrderCardData, "returns" | "hasTracking" | "items" | "delivered_at">),
+    returns:      (o.returns ?? []) as OrderCardData["returns"],
+    hasTracking:  trackedSet.has(o.id),
+    delivered_at: deliveredEntry?.created_at ?? null,
+    items: (o.items as unknown as RawItem[]).map((item) => {
+      const vInfo = item.variant_id ? variantMap.get(item.variant_id) : undefined;
+      const variantLabel = item.variant_name
+        ?? (vInfo ? [vInfo.color, vInfo.size].filter(Boolean).join(" / ") : null);
+      return {
+        id:           item.id,
+        product_name: item.product_name,
+        variant_name: variantLabel,
+        quantity:     item.quantity,
+        unit_price:   item.unit_price,
+        total:        item.total,
+        image_url:    item.variant_id ? (imageMap.get(item.variant_id) ?? null) : null,
+      };
+    }),
+  };
+  });
 
   return (
     <div className="container py-8">

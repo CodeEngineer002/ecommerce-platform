@@ -110,11 +110,24 @@ export const PATCH = withApiHandler(
           const customerName = profile?.full_name ?? toEmail;
 
           if (status === "shipped") {
+            // Fetch the latest fulfillment to get tracking details
+            const { data: fulfillment } = await db
+              .from("order_fulfillments")
+              .select("tracking_number, tracking_url, carrier, estimated_delivery")
+              .eq("order_id", id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
             await sendOrderShippedEmail({
               to: toEmail,
               customerName,
               orderId: id,
               orderNumber: order.order_number,
+              trackingNumber:    fulfillment?.tracking_number ?? null,
+              trackingUrl:       fulfillment?.tracking_url ?? null,
+              carrier:           fulfillment?.carrier ?? null,
+              estimatedDelivery: fulfillment?.estimated_delivery ?? null,
             });
           } else {
             await sendOrderCancelledEmail({
