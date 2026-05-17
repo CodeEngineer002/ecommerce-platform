@@ -1,10 +1,12 @@
-import { ArrowRight, ShieldCheck, Star, Truck, Zap } from "lucide-react";
+import { ShieldCheck, Star, Truck, Zap } from "lucide-react";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
+import { HeroBannerCarousel, type HeroSlide } from "@/components/cms/hero-banner-carousel";
+import { PromoBannerCarousel, type PromoSlide } from "@/components/cms/promo-banner-carousel";
 import { ProductGrid } from "@/components/ecommerce/product-grid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -110,10 +112,26 @@ export default async function LocaleHomePage({ params }: Props) {
   const messages = await loadMessages(lang);
   const sections = await deliverHomepageSections(country, lang);
 
-  const hero = sections.find((s) => s.type === "hero_banner");
-  const heroContent = hero?.content as {
-    cta_text?: string; cta_link?: string; image_url?: string; badge?: string;
-  } | null;
+  const heroSection = sections.find((s) => s.type === "hero_banner");
+  const heroRaw = heroSection?.content as Record<string, unknown> | null;
+
+  // Support both old single-image format and new carousel slides format
+  const heroSlides: HeroSlide[] = (() => {
+    if (!heroSection) return [];
+    const rawSlides = heroRaw?.slides as HeroSlide[] | undefined;
+    if (rawSlides?.length) return rawSlides;
+    // Legacy single-image fallback — wrap into a single slide
+    return [{
+      image_url: heroRaw?.image_url as string | undefined,
+      title:     heroSection.title   ?? undefined,
+      subtitle:  heroSection.subtitle ?? undefined,
+      badge:     heroRaw?.badge      as string | undefined,
+      cta_text:  heroRaw?.cta_text   as string | undefined,
+      cta_link:  heroRaw?.cta_link   as string | undefined,
+    }];
+  })();
+
+  const promoSections = sections.filter((s) => s.type === "promotional_banner" && s.isActive);
 
   const dir = LANGUAGES[lang].dir;
 
@@ -125,39 +143,17 @@ export default async function LocaleHomePage({ params }: Props) {
   ];
 
   return (
-    <div className="space-y-16 pb-16" dir={dir}>
+    <div className="pb-16" dir={dir}>
       {/* Hero */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-brand-600 to-brand-900 text-white">
-        <div className="container relative z-10 flex min-h-[500px] flex-col items-start justify-center gap-6 py-16">
-          {(hero?.title || heroContent?.badge) && (
-            <div className="space-y-2">
-              {heroContent?.badge && (
-                <Badge className="bg-white/20 text-white hover:bg-white/30">{heroContent.badge}</Badge>
-              )}
-              <h1 className="max-w-2xl text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
-                {hero?.title ?? APP_NAME}
-              </h1>
-              {hero?.subtitle && (
-                <p className="max-w-lg text-lg text-white/80">{hero.subtitle}</p>
-              )}
-            </div>
-          )}
-          <Button size="xl" variant="secondary" asChild className="gap-2">
-            <Link href={heroContent?.cta_link ?? routes.products}>
-              {heroContent?.cta_text ?? messages.home.heroCta}
-              <ArrowRight className="h-5 w-5" />
-            </Link>
-          </Button>
-        </div>
-        {heroContent?.image_url && (
-          <div className="absolute inset-0 opacity-10">
-            <Image src={heroContent.image_url} alt="Hero" fill className="object-cover" priority />
-          </div>
-        )}
-      </section>
+      <HeroBannerCarousel
+        slides={heroSlides}
+        fallbackTitle={APP_NAME}
+        fallbackCtaText={messages.home.heroCta}
+        fallbackCtaLink={routes.products}
+      />
 
       {/* Trust indicators */}
-      <section className="container">
+      <section className="container mt-16">
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           {trustItems.map(({ icon: Icon, title, desc }) => (
             <div key={title} className="flex items-start gap-3 rounded-lg border p-4">
@@ -173,26 +169,43 @@ export default async function LocaleHomePage({ params }: Props) {
         </div>
       </section>
 
-      <Suspense fallback={<div className="container h-48 animate-pulse rounded-lg bg-muted" />}>
-        <CategoriesSection country={country} lang={lang} />
-      </Suspense>
+      <div className="mt-16">
+        <Suspense fallback={<div className="container h-48 animate-pulse rounded-lg bg-muted" />}>
+          <CategoriesSection country={country} lang={lang} />
+        </Suspense>
+      </div>
 
-      <Suspense fallback={<div className="container h-64 animate-pulse rounded-lg bg-muted" />}>
-        <FeaturedProductsSection country={country} lang={lang} />
-      </Suspense>
+      <div className="mt-16">
+        <Suspense fallback={<div className="container h-64 animate-pulse rounded-lg bg-muted" />}>
+          <FeaturedProductsSection country={country} lang={lang} />
+        </Suspense>
+      </div>
 
-      {/* Promo banner */}
-      <section className="bg-muted">
-        <div className="container flex flex-col items-center gap-4 py-16 text-center">
-          <Badge variant="brand" className="text-sm">{messages.home.newArrivals}</Badge>
-          <h2 className="max-w-2xl text-3xl font-bold">
-            {messages.home.newArrivals} — {COUNTRIES[country].name}
-          </h2>
-          <Button size="lg" asChild>
-            <Link href={`${routes.products}?sort=newest`}>{messages.home.heroCta}</Link>
-          </Button>
-        </div>
-      </section>
+      {/* Promo banner — full-bleed, outside space-y to prevent overflow bleed */}
+      <div className="mt-16">
+        {promoSections.length > 0 ? (
+          promoSections.map((promo) => (
+            <PromoBannerCarousel
+              key={promo.id}
+              slides={(promo.content?.slides as PromoSlide[]) ?? []}
+              title={promo.title}
+              subtitle={promo.subtitle}
+            />
+          ))
+        ) : (
+          <section className="bg-muted">
+            <div className="container flex flex-col items-center gap-4 py-16 text-center">
+              <Badge variant="brand" className="text-sm">{messages.home.newArrivals}</Badge>
+              <h2 className="max-w-2xl text-3xl font-bold">
+                {messages.home.newArrivals} — {COUNTRIES[country].name}
+              </h2>
+              <Button size="lg" asChild>
+                <Link href={`${routes.products}?sort=newest`}>{messages.home.heroCta}</Link>
+              </Button>
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

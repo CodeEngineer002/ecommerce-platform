@@ -24,6 +24,7 @@ interface DataTableProps<T> {
   page?: number;
   totalPages?: number;
   onPageChange?: (page: number) => void;
+  onRowClick?: (row: T) => void;
   className?: string;
 }
 
@@ -44,6 +45,7 @@ export function DataTable<T>({
   page,
   totalPages,
   onPageChange,
+  onRowClick,
   className,
 }: DataTableProps<T>) {
   if (isLoading) return <LoadingState text={loadingText} />;
@@ -77,7 +79,14 @@ export function DataTable<T>({
               </tr>
             ) : (
               data.map((row) => (
-                <tr key={keyFn(row)} className="hover:bg-muted/30">
+                <tr
+                  key={keyFn(row)}
+                  className={cn(
+                    "hover:bg-muted/30",
+                    onRowClick && "cursor-pointer",
+                  )}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                >
                   {columns.map((col) => (
                     <td
                       key={col.header}
@@ -86,6 +95,10 @@ export function DataTable<T>({
                         alignClass[col.align ?? "left"],
                         col.cellClassName,
                       )}
+                      onClick={
+                        // Prevent row click when clicking the actions column (last col with no header)
+                        col.header === "" ? (e) => e.stopPropagation() : undefined
+                      }
                     >
                       {col.cell(row)}
                     </td>

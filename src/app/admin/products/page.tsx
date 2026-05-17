@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
@@ -311,6 +312,7 @@ const DEFAULT_FILTERS: ProductFilters = {
 };
 
 export default function AdminProductsPage() {
+  const router = useRouter();
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<ProductFilters>(DEFAULT_FILTERS);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -374,6 +376,7 @@ export default function AdminProductsPage() {
         page={page}
         totalPages={data?.totalPages ?? 1}
         onPageChange={(p) => { setPage(p); }}
+        onRowClick={(p) => router.push(ROUTES.admin.editProduct(p.id))}
       />
 
       <ConfirmDialog

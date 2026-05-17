@@ -107,3 +107,38 @@ export async function registerMediaAsset(asset: Omit<MediaAsset, "id" | "created
   if (error) throw error;
   return data;
 }
+
+// Upload a file to the cms-assets Supabase Storage bucket and register it in media_assets.
+// Returns the public URL of the uploaded image.
+export async function uploadCmsImage(file: File): Promise<string> {
+  const supabase = createClient();
+
+  const ext = file.name.split(".").pop() ?? "bin";
+  const path = `slides/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("cms-assets")
+    .upload(path, file, { contentType: file.type, upsert: false });
+
+  if (uploadError) throw uploadError;
+
+  const { data: urlData } = supabase.storage.from("cms-assets").getPublicUrl(path);
+  const publicUrl = urlData.publicUrl;
+
+  // Register in media_assets table for the media library
+  await registerMediaAsset({
+    url:           publicUrl,
+    thumbnail_url: publicUrl,
+    filename:      path,
+    original_name: file.name,
+    mime_type:     file.type,
+    file_size:     file.size,
+    width:         null,
+    height:        null,
+    alt_text:      null,
+    tags:          [],
+    folder_id:     null,
+  });
+
+  return publicUrl;
+}

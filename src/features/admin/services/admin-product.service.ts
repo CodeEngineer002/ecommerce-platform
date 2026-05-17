@@ -67,9 +67,10 @@ export async function adminGetProduct(id: string) {
 
 export async function adminCreateProduct(data: ProductFormData): Promise<Product> {
   const supabase = createClient();
+  const payload = { ...data, sku: data.sku?.trim() || null };
   const { data: product, error } = await supabase
     .from("products")
-    .insert(data)
+    .insert(payload)
     .select()
     .single();
   if (error) throw error;
@@ -81,9 +82,14 @@ export async function adminUpdateProduct(
   data: Partial<ProductFormData>
 ): Promise<Product> {
   const supabase = createClient();
+  // Empty string SKU violates the unique constraint — send null instead
+  const payload = {
+    ...data,
+    sku: data.sku?.trim() || null,
+  };
   const { data: product, error } = await supabase
     .from("products")
-    .update(data)
+    .update(payload)
     .eq("id", id)
     .select()
     .single();
