@@ -212,6 +212,44 @@
       },
       "adr": "ADR-009"
     },
+    "product_catalog_management": {
+      "title": "Admin Product Catalog Management",
+      "trigger": "Admin navigates to /admin/products",
+      "adr": "ADR-010",
+      "sub_workflows": {
+        "product_list": {
+          "description": "Enhanced list with hierarchy, inventory, price range, market chips, status badge, relative updated-at. Client-side filtering on 50-product pages.",
+          "filter_fields": ["search (name|product_code|sku)", "category", "status (active|draft|archived)", "stock (all|low|oos)", "featured"],
+          "quick_actions": ["Edit", "Preview PDP", "Open Inventory", "Duplicate", "Activate/Deactivate", "Archive", "Copy link"]
+        },
+        "product_edit": {
+          "description": "Tabbed edit page: Overview | Media | Variants | Inventory | Pricing | SEO | Publishing | Shipping",
+          "tabs": {
+            "overview": "Name, slug, short/full description",
+            "media": "Drag-reorder images, primary toggle, alt-text, variant image assignment",
+            "variants": "Color × Size matrix + variant modal (SKU, price, barcode, active, default)",
+            "inventory": "Read-only stock summary per variant, link to /admin/inventory",
+            "pricing": "Base price, compare price, product code",
+            "seo": "SEO title + meta description with char counters and live search preview",
+            "publishing": "Active/Featured toggles, region-grouped searchable country selector",
+            "shipping": "Weight, L×W×H (migration 00027), fulfillment type, tax class, returnable toggle"
+          }
+        },
+        "product_duplication": {
+          "description": "Clone product as Draft with new slug, clear product_code, clone images (reuse URLs), clone variants (append -COPY to SKUs), create inventory rows at 0.",
+          "invariants": [
+            "Duplicated product starts as Draft (is_active:false)",
+            "product_code is set to null on duplication — must be assigned manually",
+            "Variant SKUs get '-COPY' suffix to avoid unique constraint violations",
+            "Barcodes are cleared to avoid GTIN duplication"
+          ]
+        },
+        "variant_matrix": {
+          "description": "Color × Size grid where each cell represents one variant. Clicking an existing cell opens the VariantModal for editing. Clicking an empty cell opens VariantModal pre-filled with that color+size.",
+          "generate_missing_skus": "Scans variants without a sku and generates one from color code + size code. Uses updateVariant() for each."
+        }
+      }
+    },
     "locale_detection": {
       "title": "Locale Detection & Routing",
       "trigger": "Any storefront HTTP request",

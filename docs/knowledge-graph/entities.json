@@ -61,12 +61,27 @@
           "name",
           "slug",
           "description",
+          "short_desc",
           "base_price",
+          "compare_price",
           "is_active",
           "is_featured",
+          "deleted_at — soft delete for archived products (ADR-010 status model)",
           "category_id",
           "product_code (migration 00025) — unique human/business-readable product code e.g. FASH-003",
-          "sku — legacy product-level sku kept for backward compat; use product_code for new code"
+          "sku — legacy product-level sku kept for backward compat; use product_code for new code",
+          "weight — product weight in kg",
+          "length_cm (migration 00027) — packaged length for shipping calculation",
+          "width_cm (migration 00027) — packaged width",
+          "height_cm (migration 00027) — packaged height",
+          "fulfillment_type (migration 00027) — standard|digital|preorder|backorder",
+          "tax_class (migration 00027) — tax class identifier e.g. GST_18, VAT_20, EXEMPT",
+          "is_returnable (migration 00027) — return eligibility, default true",
+          "available_country_ids — array of country UUIDs where product is visible",
+          "seo_title",
+          "seo_desc",
+          "updated_at",
+          "created_at"
         ],
         "product_variants": [
           "id",
@@ -84,8 +99,12 @@
         "product_images": ["id", "product_id", "variant_id", "url", "alt", "sort_order"]
       },
       "identifier_model_adr": "ADR-008",
+      "catalog_ux_adr": "ADR-010",
       "sku_generation": "src/domain/catalog/sku-generator.ts",
-      "catalog_errors": "src/domain/catalog/catalog-errors.ts"
+      "catalog_errors": "src/domain/catalog/catalog-errors.ts",
+      "admin_service": "src/features/admin/services/admin-product.service.ts",
+      "catalog_utils": "src/app/admin/products/catalog-utils.ts",
+      "status_model": "computeProductStatus(is_active, deleted_at) → 'active'|'draft'|'archived'"
     },
     "inventory": {
       "tables": ["inventory_levels", "inventory_movements", "warehouses", "country_inventory"],

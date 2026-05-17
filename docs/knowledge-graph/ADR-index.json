@@ -133,12 +133,28 @@
   ],
   "pending_adrs": [
     {
-      "id": "ADR-009",
+      "id": "ADR-009-delivery",
       "title": "Delivery Layer Abstraction",
       "status": "Proposed",
       "domains": ["cms"],
       "summary": "CMS content delivery should be abstracted from storage mechanism. Future: headless CMS swap possible."
     },
+    {
+      "id": "ADR-011",
+      "title": "Multi-Currency Architecture",
+      "status": "Proposed",
+      "domains": ["pricing", "cart", "order"],
+      "summary": "Cross-border purchases require exchange rate capture at order time. Pricing engine extension needed."
+    },
+    {
+      "id": "ADR-012",
+      "title": "External Tax Provider Integration",
+      "status": "Proposed",
+      "domains": ["pricing"],
+      "summary": "Replace getTaxConfig() with Avalara/TaxJar API for accurate real-time tax rates. Interface already abstracted."
+    }
+  ],
+  "accepted_adrs_extension": [
     {
       "id": "ADR-009",
       "title": "Enterprise Inventory UX Architecture",
@@ -169,17 +185,37 @@
     },
     {
       "id": "ADR-010",
-      "title": "Multi-Currency Architecture",
-      "status": "Proposed",
-      "domains": ["pricing", "cart", "order"],
-      "summary": "Cross-border purchases require exchange rate capture at order time. Pricing engine extension needed."
-    },
-    {
-      "id": "ADR-011",
-      "title": "External Tax Provider Integration",
-      "status": "Proposed",
-      "domains": ["pricing"],
-      "summary": "Replace getTaxConfig() with Avalara/TaxJar API for accurate real-time tax rates. Interface already abstracted."
+      "title": "Enterprise Catalog Management UX Architecture",
+      "file": "docs/ADRs/ADR-010-product-catalog-ux.md",
+      "status": "Accepted",
+      "date": "2026-05-17",
+      "domains": ["catalog", "admin"],
+      "summary": "Enhanced product list with hierarchy/inventory columns, filter bar, and quick actions. Tabbed product edit page (Overview/Media/Variants/Inventory/Pricing/SEO/Publishing/Shipping). Color×Size variant matrix. Product duplication/archiving. Shipping fields migration (00027).",
+      "key_invariants": [
+        "Product status is computed client-side from is_active + deleted_at — no DB enum required",
+        "Archive = is_active:false + deleted_at:now() — hard delete still possible",
+        "Duplicate product gets slug suffix '-copy-<timestamp>' to avoid unique constraint",
+        "Duplicated product starts as Draft (is_active:false) with product_code:null",
+        "Variant matrix uses same grouping logic as inventory matrix (buildVariantMatrix)",
+        "Shipping fields (00027) are all nullable — no impact on existing products",
+        "Client-side filtering operates on already-loaded page (50 products) — no server-side filter calls"
+      ],
+      "migration": "supabase/migrations/00027_product_catalog_enhancements.sql",
+      "new_files": [
+        "src/app/admin/products/catalog-utils.ts",
+        "src/app/admin/products/_components/product-filters.tsx",
+        "src/app/admin/products/_components/overview-section.tsx",
+        "src/app/admin/products/_components/media-section.tsx",
+        "src/app/admin/products/_components/variants-section.tsx",
+        "src/app/admin/products/_components/variant-modal.tsx",
+        "src/app/admin/products/_components/inventory-section.tsx",
+        "src/app/admin/products/_components/pricing-section.tsx",
+        "src/app/admin/products/_components/seo-section.tsx",
+        "src/app/admin/products/_components/publishing-section.tsx",
+        "src/app/admin/products/_components/shipping-section.tsx",
+        "src/tests/unit/product-catalog.test.ts",
+        "docs/ADRs/ADR-010-product-catalog-ux.md"
+      ]
     }
   ]
 }

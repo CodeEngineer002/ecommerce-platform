@@ -1,6 +1,19 @@
 import { createClient } from "@/lib/supabase/client";
-import type { ProductFormData } from "@/lib/validators";
+import type { ProductFormData, VariantFormData } from "@/lib/validators";
 import type { Product, ProductImage, ProductVariant } from "@/types";
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+async function getDefaultWarehouseId(): Promise<string | null> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("warehouses")
+    .select("id")
+    .eq("is_default", true)
+    .eq("is_active", true)
+    .maybeSingle();
+  return data?.id ?? null;
+}
 
 const ADMIN_PRODUCT_PAGE_SIZE = 50;
 
@@ -149,20 +162,13 @@ export async function adminCreateVariant(
     .single();
   if (error) throw error;
 
-  // inventory_levels is the single source of truth (CLAUDE.md Step 1 / migration 00017).
-  // Fetch the default warehouse to create the inventory row.
-  const { data: warehouse } = await supabase
-    .from("warehouses")
-    .select("id")
-    .eq("is_default", true)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (warehouse) {
+  // inventory_levels is the single source of truth (migration 00017).
+  const warehouseId = await getDefaultWarehouseId();
+  if (warehouseId) {
     await supabase
       .from("inventory_levels")
       .upsert(
-        { warehouse_id: warehouse.id, variant_id: data.id, quantity: 0, reserved: 0 },
+        { warehouse_id: warehouseId, variant_id: data.id, quantity: 0, reserved: 0 },
         { onConflict: "warehouse_id,variant_id" }
       );
   }
@@ -172,22 +178,159 @@ export async function adminCreateVariant(
 
 export async function adminUpdateInventory(variantId: string, quantity: number): Promise<void> {
   const supabase = createClient();
-  // inventory_levels is the single source of truth (CLAUDE.md Step 1 / migration 00017).
-  // Upsert covers the case where an inventory_levels row may not yet exist.
-  const { data: warehouse } = await supabase
-    .from("warehouses")
-    .select("id")
-    .eq("is_default", true)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (!warehouse) throw new Error("Default warehouse not found");
+  const warehouseId = await getDefaultWarehouseId();
+  if (!warehouseId) throw new Error("Default warehouse not found");
 
   const { error } = await supabase
     .from("inventory_levels")
     .upsert(
-      { warehouse_id: warehouse.id, variant_id: variantId, quantity, reserved: 0 },
+      { warehouse_id: warehouseId, variant_id: variantId, quantity, reserved: 0 },
       { onConflict: "warehouse_id,variant_id" }
     );
+  if (error) throw error;
+}
+
+// ── Variant CRUD ──────────────────────────────────────────────────────────────
+
+export async function adminUpdateVariant(
+  variantId: string,
+  data: Partial<VariantFormData>
+): Promise<ProductVariant> {
+  const supabase = createClient();
+  const { data: variant, error } = await supabase
+    .from("product_variants")
+    .update(data)
+    .eq("id", variantId)
+    .select()
+    .single();
+  if (error) throw error;
+  return variant;
+}
+
+export async function adminDeleteVariant(variantId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("product_variants")
+    .delete()
+    .eq("id", variantId);
+  if (error) throw error;
+}
+
+// ── Product-level operations ──────────────────────────────────────────────────
+
+export async function adminArchiveProduct(id: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("products")
+    .update({ is_active: false, deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function adminDuplicateProduct(id: string): Promise<Product> {
+  const supabase = createClient();
+
+  // 1. Fetch source product with variants + images
+  const { data: source, error: srcErr } = await supabase
+    .from("products")
+    .select(`
+      *,
+      images:product_images(url, alt_text, sort_order, is_primary, variant_id),
+      variants:product_variants(
+        name, sku, price, options, is_active, is_default,
+        color_code, size_code, barcode, supplier_sku
+      )
+    `)
+    .eq("id", id)
+    .single();
+  if (srcErr) throw srcErr;
+
+  // 2. Clone the product row with a new slug / name and clear product_code (must be unique)
+  const { id: _id, created_at: _ca, updated_at: _ua, deleted_at: _da, ...productFields } = source as Record<string, unknown>;
+  const timestamp = Date.now();
+  const newSlug = `${(productFields.slug as string)}-copy-${timestamp}`;
+
+  const { data: newProduct, error: insertErr } = await supabase
+    .from("products")
+    .insert({
+      ...productFields,
+      name: `${productFields.name as string} (Copy)`,
+      slug: newSlug,
+      product_code: null, // must be manually set — unique constraint
+      is_active: false,   // start as Draft
+      deleted_at: null,
+    })
+    .select()
+    .single();
+  if (insertErr) throw insertErr;
+
+  // 3. Clone images (re-use existing storage URLs — no re-upload cost)
+  const images = (source as { images?: Array<Record<string, unknown>> }).images ?? [];
+  if (images.length > 0) {
+    await supabase.from("product_images").insert(
+      images.map((img) => ({ ...img, product_id: newProduct.id }))
+    );
+  }
+
+  // 4. Clone variants + create inventory rows
+  const variants = (source as { variants?: Array<Record<string, unknown>> }).variants ?? [];
+  const warehouseId = await getDefaultWarehouseId();
+
+  for (const v of variants) {
+    const newSku = v.sku ? `${v.sku as string}-COPY` : null;
+    const { data: newVariant, error: vErr } = await supabase
+      .from("product_variants")
+      .insert({ ...v, product_id: newProduct.id, sku: newSku, barcode: null })
+      .select()
+      .single();
+    if (vErr) continue; // skip on conflict (sku uniqueness)
+
+    if (warehouseId) {
+      await supabase
+        .from("inventory_levels")
+        .upsert(
+          { warehouse_id: warehouseId, variant_id: newVariant.id, quantity: 0, reserved: 0 },
+          { onConflict: "warehouse_id,variant_id" }
+        );
+    }
+  }
+
+  return newProduct;
+}
+
+// ── Image reorder ─────────────────────────────────────────────────────────────
+
+export async function adminReorderImages(
+  updates: Array<{ id: string; sort_order: number; is_primary: boolean }>
+): Promise<void> {
+  const supabase = createClient();
+  await Promise.all(
+    updates.map(({ id, sort_order, is_primary }) =>
+      supabase
+        .from("product_images")
+        .update({ sort_order, is_primary })
+        .eq("id", id)
+    )
+  );
+}
+
+export async function adminUpdateImageAltText(imageId: string, altText: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("product_images")
+    .update({ alt_text: altText })
+    .eq("id", imageId);
+  if (error) throw error;
+}
+
+export async function adminAssignImageToVariant(
+  imageId: string,
+  variantId: string | null
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("product_images")
+    .update({ variant_id: variantId })
+    .eq("id", imageId);
   if (error) throw error;
 }

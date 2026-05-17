@@ -309,6 +309,47 @@
         "InvalidOptionCodeError — option value not resolvable to code"
       ],
       "helper": "mapDbErrorToCatalogError(dbMessage, context) — maps DB constraint violations to typed domain errors"
+    },
+    "AdminProductService": {
+      "file": "src/features/admin/services/admin-product.service.ts",
+      "type": "Functions",
+      "db_client": "createClient() — admin session (RLS: admin role)",
+      "description": "All admin-side product catalog CRUD. Implements ADR-010 catalog management operations.",
+      "adr": "ADR-010",
+      "methods": {
+        "adminGetProducts": { "params": ["page: number"], "returns": "{ data, count, totalPages }", "description": "Paginated list with variants, inventory_levels, images. Page size 50." },
+        "adminGetProduct": { "params": ["id: string"], "returns": "Product with variants + images + inventory_levels" },
+        "adminCreateProduct": { "params": ["data: ProductFormData"], "returns": "Product" },
+        "adminUpdateProduct": { "params": ["id: string", "data: Partial<ProductFormData>"], "returns": "Product" },
+        "adminDeleteProduct": { "params": ["id: string"], "returns": "void" },
+        "adminArchiveProduct": { "params": ["id: string"], "returns": "void", "description": "Soft delete: is_active=false, deleted_at=now()" },
+        "adminDuplicateProduct": { "params": ["id: string"], "returns": "Product", "description": "Clones product (slug suffix, product_code=null, is_active=false) + images + variants + inventory rows" },
+        "adminCreateVariant": { "params": ["productId: string", "variant"], "returns": "ProductVariant", "description": "Creates variant + inventory_levels row for default warehouse" },
+        "adminUpdateVariant": { "params": ["variantId: string", "data: Partial<VariantFormData>"], "returns": "ProductVariant" },
+        "adminDeleteVariant": { "params": ["variantId: string"], "returns": "void" },
+        "adminUpdateInventory": { "params": ["variantId: string", "quantity: number"], "returns": "void", "description": "Upsert inventory_levels for default warehouse" },
+        "uploadProductImage": { "params": ["productId: string", "file: File"], "returns": "ProductImage" },
+        "deleteProductImage": { "params": ["imageId: string", "url: string"], "returns": "void" },
+        "adminReorderImages": { "params": ["updates: Array<{id, sort_order, is_primary}>"], "returns": "void" },
+        "adminUpdateImageAltText": { "params": ["imageId: string", "altText: string"], "returns": "void" },
+        "adminAssignImageToVariant": { "params": ["imageId: string", "variantId: string|null"], "returns": "void" }
+      }
+    },
+    "CatalogUtils": {
+      "file": "src/app/admin/products/catalog-utils.ts",
+      "type": "Functions",
+      "description": "Pure display/filter utilities for the admin catalog UX. No Supabase dependency — fully testable. Implements ADR-010.",
+      "adr": "ADR-010",
+      "methods": {
+        "computeProductStatus": { "params": ["is_active: boolean", "deleted_at?: string|null"], "returns": "ProductStatus ('active'|'draft'|'archived')" },
+        "computeHierarchy": { "params": ["variants: AdminVariant[]"], "returns": "{ variantCount, colorCount, sizeCount, skuCount }" },
+        "computeInventorySummary": { "params": ["variants: AdminVariant[]"], "returns": "{ totalStock, oosCount, lowStockCount }" },
+        "computePriceRange": { "params": ["basePrice: number", "variants: AdminVariant[]"], "returns": "{ min, max }" },
+        "buildVariantMatrix": { "params": ["variants: AdminVariant[]"], "returns": "VariantMatrix { colors, sizes, cells: Map<'color::size', VariantMatrixCell> }" },
+        "filterProducts": { "params": ["products: AdminProductRow[]", "filters: ProductFilters"], "returns": "AdminProductRow[]" },
+        "formatRelativeTime": { "params": ["iso: string|null|undefined"], "returns": "string ('2h ago', '3d ago', etc.)" },
+        "generateVariantName": { "params": ["color: string|null", "size: string|null"], "returns": "string ('Black / XS' or 'Default')" }
+      }
     }
   }
 }
