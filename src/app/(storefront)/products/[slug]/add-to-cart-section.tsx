@@ -44,7 +44,7 @@ export function AddToCartSection({
     onVariantChange?.(id);
   };
 
-  const { openCart } = useCartStore();
+  const { openCart, serverCart } = useCartStore();
   const { mutate: addCartItem, isPending: isAddingToCart } = useAddCartItem();
   const { toggleItem, hasItem } = useWishlistStore();
   const isWishlisted = hasItem(product.id);
@@ -62,10 +62,17 @@ export function AddToCartSection({
     return Math.max(0, (selectedVariant.inventory?.quantity ?? 0) - (selectedVariant.inventory?.reserved ?? 0));
   })();
 
+  // How many of this variant the user already has in their cart.
+  // ADDITIVE behavior: PDP max = stock - already-in-cart, so user can't overshoot.
+  const alreadyInCart = selectedVariantId
+    ? (serverCart?.items.find((i) => i.variant_id === selectedVariantId)?.quantity ?? 0)
+    : 0;
+  const maxAddable = Math.max(0, availableStock - alreadyInCart);
+
   const handleAddToCart = () => {
     if (!selectedVariant) return;
     const opts = selectedVariant.options as Record<string, string> | null;
-    const label = opts ? Object.values(opts).join(" / ") : selectedVariant.name;
+    const variantLabel = opts ? Object.values(opts).join(" / ") : selectedVariant.name;
 
     addCartItem(
       {
@@ -83,12 +90,29 @@ export function AddToCartSection({
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (cart) => {
           openCart();
-          toast.success(`${label} added to cart!`);
+          // Show accurate feedback using add_result from server
+          const result = cart.add_result;
+          if (result) {
+            if (result.was_new_item) {
+              toast.success(`${variantLabel} added to cart!`);
+            } else if (result.was_capped) {
+              toast(
+                `Qty capped at ${result.final_quantity} (stock limit). ${variantLabel} updated in cart.`,
+                { icon: "⚠️" },
+              );
+            } else {
+              toast.success(
+                `Added ${result.added_quantity} more. Cart now has ${result.final_quantity}× ${variantLabel}.`,
+              );
+            }
+          } else {
+            toast.success(`${variantLabel} added to cart!`);
+          }
         },
         onError: (err) => toast.error(err.message),
-      }
+      },
     );
   };
 
@@ -100,11 +124,15 @@ export function AddToCartSection({
     buttonLabel = "Select a Size";
   } else if (availableStock === 0) {
     buttonLabel = "Out of Stock";
+  } else if (maxAddable === 0 && alreadyInCart > 0) {
+    buttonLabel = "Max Qty in Cart";
   } else {
     buttonLabel = <><ShoppingCart className="h-5 w-5" />Add to Cart</>;
   }
 
-  const isDisabled = !selectedVariantId || availableStock === 0 || isAddingToCart;
+  const isDisabled =
+    !selectedVariantId || availableStock === 0 || isAddingToCart ||
+    (maxAddable === 0 && alreadyInCart > 0);
 
   return (
     <div className="space-y-4">
@@ -131,15 +159,20 @@ export function AddToCartSection({
         </div>
       )}
 
-      {/* Quantity */}
+      {/* Quantity — max is stock minus what's already in cart (additive-aware) */}
       <div className="flex items-center gap-4">
         <p className="text-sm font-medium">Quantity</p>
         <QuantitySelector
           value={quantity}
           onChange={setQuantity}
-          max={Math.min(availableStock, 10)}
-          disabled={availableStock === 0 || !selectedVariantId}
+          max={maxAddable > 0 ? maxAddable : availableStock}
+          disabled={availableStock === 0 || !selectedVariantId || maxAddable === 0}
         />
+        {alreadyInCart > 0 && availableStock > 0 && (
+          <span className="text-xs text-muted-foreground">
+            ({alreadyInCart} already in cart)
+          </span>
+        )}
       </div>
 
       {/* Actions */}

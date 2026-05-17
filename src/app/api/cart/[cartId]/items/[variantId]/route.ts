@@ -16,7 +16,8 @@ import { resolveCartIdentity } from "@/lib/cart/resolve-identity";
 type RouteParams = { params: Promise<{ cartId: string; variantId: string }> };
 
 const updateSchema = z.object({
-  quantity: z.number().int().min(0).max(10),
+  // 0 = remove item; max(50) matches CART_MAX_QUANTITY
+  quantity: z.number().int().min(0).max(50),
 });
 
 export const PATCH = withApiHandler(

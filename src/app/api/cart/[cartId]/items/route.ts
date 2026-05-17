@@ -16,7 +16,8 @@ import { withRateLimit } from "@/lib/rate-limit";
 
 const schema = z.object({
   variant_id: z.string().uuid(),
-  quantity: z.number().int().min(1).max(10),
+  // max(50) matches CART_MAX_QUANTITY; stock is the real constraint enforced server-side
+  quantity: z.number().int().min(1).max(50),
 });
 
 export const POST = withRateLimit(

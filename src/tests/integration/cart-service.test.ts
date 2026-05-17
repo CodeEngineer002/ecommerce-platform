@@ -245,3 +245,141 @@ describe("CartService — validateCartForCheckout", () => {
     await expect(validateCartForCheckout(CART_ID, userIdentity)).rejects.toThrow(EmptyCartError);
   });
 });
+
+// ── addCartItem — ADDITIVE merge behavior + add_result ────────────────────────
+
+/**
+ * Builds a mock DB that serves responses in call order.
+ * Each call to `db.from(table)` pops the next response from the queue.
+ */
+function makeSequentialDb(responses: unknown[]) {
+  let idx = 0;
+  return {
+    from: vi.fn().mockImplementation(() => {
+      const data = responses[idx++] ?? null;
+      return {
+        select: vi.fn().mockReturnThis(),
+        insert: vi.fn().mockReturnThis(),
+        update: vi.fn().mockReturnThis(),
+        upsert: vi.fn().mockResolvedValue({ data: null, error: null }),
+        delete: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        neq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockReturnThis(),
+        gte: vi.fn().mockReturnThis(),
+        lte: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        is: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data, error: null }),
+        maybeSingle: vi.fn().mockResolvedValue({ data, error: null }),
+      };
+    }),
+    rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
+  };
+}
+
+const mockVariantWithLevels = {
+  id: VARIANT_ID,
+  price: 999,
+  is_active: true,
+  options: { color: "Black", size: "XL" },
+  sku: "FASH-003-BLK-XL",
+  product: {
+    id: "prod-001",
+    name: "Oversized Premium Hoodie",
+    base_price: 999,
+    is_active: true,
+    images: [{ url: "https://cdn.example.com/img.jpg" }],
+  },
+  // inventory_levels as array (PostgREST shape)
+  inventory_levels: [{ quantity: 20, reserved: 0 }],
+};
+
+describe("CartService — addCartItem: ADDITIVE behavior and add_result", () => {
+  it("returns add_result.was_new_item=true for brand-new cart line", async () => {
+    // Sequence: cart → variant → existing item (null = not in cart) → upsert
+    // Then buildCartSummary: cart-with-items → variants-for-summary
+    const cartWithItems = { ...mockCart, cart_items: [{ id: "ci-1", variant_id: VARIANT_ID, quantity: 5, unit_price_snapshot: 999, added_at: "", updated_at: "" }] };
+    const db = makeSequentialDb([
+      mockCart,             // getCart ownership check
+      mockVariantWithLevels, // fetchVariant
+      null,                  // existing item check: null = brand-new item
+      // buildCartSummary calls: carts then product_variants
+      cartWithItems,
+      [mockVariantWithLevels],
+    ]);
+    vi.mocked(createServiceClient).mockReturnValue(db as never);
+
+    const { addCartItem } = await import("@/domain/cart/cart-service");
+    const result = await addCartItem(CART_ID, userIdentity, { variant_id: VARIANT_ID, quantity: 5 });
+
+    expect(result.add_result).toBeDefined();
+    expect(result.add_result?.was_new_item).toBe(true);
+    expect(result.add_result?.previous_quantity).toBe(0);
+    expect(result.add_result?.added_quantity).toBe(5);
+    expect(result.add_result?.final_quantity).toBe(5);
+    expect(result.add_result?.was_capped).toBe(false);
+  });
+
+  it("returns add_result with additive quantities for existing line", async () => {
+    const existingItem = { id: "ci-1", quantity: 10 };
+    const cartWithItems = { ...mockCart, cart_items: [{ id: "ci-1", variant_id: VARIANT_ID, quantity: 19, unit_price_snapshot: 999, added_at: "", updated_at: "" }] };
+    const db = makeSequentialDb([
+      mockCart,
+      mockVariantWithLevels,   // stock: 20 available
+      existingItem,             // existing: qty 10
+      cartWithItems,
+      [mockVariantWithLevels],
+    ]);
+    vi.mocked(createServiceClient).mockReturnValue(db as never);
+
+    const { addCartItem } = await import("@/domain/cart/cart-service");
+    // Add 9 on top of existing 10 → total 19 (stock=20, so not capped)
+    const result = await addCartItem(CART_ID, userIdentity, { variant_id: VARIANT_ID, quantity: 9 });
+
+    expect(result.add_result?.was_new_item).toBe(false);
+    expect(result.add_result?.previous_quantity).toBe(10);
+    expect(result.add_result?.added_quantity).toBe(9);
+    expect(result.add_result?.final_quantity).toBe(19);
+    expect(result.add_result?.was_capped).toBe(false);
+  });
+
+  it("caps final quantity at available stock and sets was_capped=true", async () => {
+    const lowStockVariant = {
+      ...mockVariantWithLevels,
+      inventory_levels: [{ quantity: 12, reserved: 0 }], // only 12 available
+    };
+    const existingItem = { id: "ci-1", quantity: 10 };
+    const cartWithItems = { ...mockCart, cart_items: [{ id: "ci-1", variant_id: VARIANT_ID, quantity: 12, unit_price_snapshot: 999, added_at: "", updated_at: "" }] };
+    const db = makeSequentialDb([
+      mockCart,
+      lowStockVariant,
+      existingItem,   // existing: qty 10
+      cartWithItems,
+      [lowStockVariant],
+    ]);
+    vi.mocked(createServiceClient).mockReturnValue(db as never);
+
+    const { addCartItem } = await import("@/domain/cart/cart-service");
+    // Requesting 9 more, existing 10, stock 12 → capped to 12
+    const result = await addCartItem(CART_ID, userIdentity, { variant_id: VARIANT_ID, quantity: 9 });
+
+    expect(result.add_result?.final_quantity).toBe(12);
+    expect(result.add_result?.was_capped).toBe(true);
+  });
+
+  it("throws QuantityExceedsStockError when stock is completely exhausted", async () => {
+    const oosVariant = {
+      ...mockVariantWithLevels,
+      inventory_levels: [{ quantity: 5, reserved: 5 }], // 0 available
+    };
+    const db = makeSequentialDb([mockCart, oosVariant]);
+    vi.mocked(createServiceClient).mockReturnValue(db as never);
+
+    const { addCartItem } = await import("@/domain/cart/cart-service");
+    await expect(
+      addCartItem(CART_ID, userIdentity, { variant_id: VARIANT_ID, quantity: 1 }),
+    ).rejects.toThrow(QuantityExceedsStockError);
+  });
+});

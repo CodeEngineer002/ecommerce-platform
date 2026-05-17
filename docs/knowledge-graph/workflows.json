@@ -60,6 +60,54 @@
         "guest_cart_session cookie cleared"
       ]
     },
+    "add_to_cart": {
+      "title": "Add to Cart — Merge / Additive Behavior",
+      "_adr": "Defined in this workflow doc (no standalone ADR needed — behavior is straightforward).",
+      "chosen_behavior": "ADDITIVE",
+      "invariants": {
+        "line_uniqueness": "cart_id + product_variant_id. Same SKU/variant ALWAYS merges into one line; different color/size variants are always separate lines.",
+        "quantity_rule": "final_quantity = existing_quantity + requested_quantity, capped by min(available_stock, CART_MAX_QUANTITY=50).",
+        "update_rule": "Cart drawer +/- controls call PATCH (updateCartItemQuantity) — REPLACE semantics. Drawer controls do not call addCartItem.",
+        "stock_validation": "PDP quantity max = available_stock − already_in_cart (additive-aware). Server enforces same rule before upsert.",
+        "server_authority": "Server always returns the authoritative CartSummary after each mutation. Client never computes final quantity independently."
+      },
+      "server_flow": [
+        "POST /api/cart/[cartId]/items { variant_id, quantity }",
+        "addCartItem(): validate ownership + cart mutable",
+        "fetchVariant(): verify is_active + get inventory_levels (source of truth)",
+        "sumAvailableStock(inventory_levels) → available",
+        "If available === 0: throw QuantityExceedsStockError",
+        "existing = SELECT quantity FROM cart_items WHERE cart_id + variant_id",
+        "previousQty = existing?.quantity ?? 0",
+        "cappedQty = MIN(previousQty + requested, available, CART_MAX_QUANTITY)",
+        "UPSERT cart_items ON CONFLICT(cart_id, variant_id) DO UPDATE",
+        "Return CartSummary + add_result { previous_quantity, added_quantity, final_quantity, was_capped, was_new_item }"
+      ],
+      "client_flow": [
+        "useAddCartItem().mutate() → optimistic addItem() on Zustand legacy items",
+        "POST /api/cart/[cartId]/items",
+        "onSuccess: setServerCart(cart) + queryClient.setQueryData (no redundant GET)",
+        "CartDrawer renders from serverCart.items (CartItemDetail) — single source of truth",
+        "Toast: smart feedback from add_result (new item / additive merge / capped)"
+      ],
+      "toast_messages": {
+        "was_new_item": "'{variantLabel} added to cart!'",
+        "additive_merge": "'Added {N} more. Cart now has {total}× {variantLabel}.'",
+        "was_capped": "'Qty capped at {final} (stock limit). {variantLabel} updated in cart.'"
+      },
+      "files": {
+        "server": [
+          "src/domain/cart/cart-service.ts — addCartItem()",
+          "src/domain/cart/types.ts — CartAddResult, CartSummary.add_result",
+          "src/app/api/cart/[cartId]/items/route.ts — schema max(50)"
+        ],
+        "client": [
+          "src/features/cart/hooks/use-cart-mutations.ts — useAddCartItem (setQueryData, context.previousQty)",
+          "src/components/ecommerce/cart-drawer.tsx — renders serverCart.items",
+          "src/app/(storefront)/products/[slug]/add-to-cart-section.tsx — smart toast, maxAddable"
+        ]
+      }
+    },
     "return_flow": {
       "title": "Return & Refund Flow",
       "trigger": "Customer requests return on delivered order",

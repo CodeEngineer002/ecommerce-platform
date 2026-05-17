@@ -30,19 +30,33 @@ export interface AddCartItemVars {
   optimisticItem: CartItemWithProduct;
 }
 
+interface AddCartItemContext {
+  variantId: string;
+  previousQty: number;
+}
+
 /**
  * Adds an item via POST /api/cart/[cartId]/items.
+ *
+ * ADDITIVE behavior: if the variant already exists in the cart, the requested
+ * quantity is ADDED to the existing quantity (capped by stock).
+ *
  * Optimistically updates Zustand; rolls back on error.
+ * onSuccess: sets query cache directly (no redundant GET refetch).
  */
 export function useAddCartItem() {
   const queryClient = useQueryClient();
   const addItemStore = useCartStore((s) => s.addItem);
   const removeItemStore = useCartStore((s) => s.removeItem);
 
-  return useMutation<CartSummary, Error, AddCartItemVars, { variantId: string }>({
-    onMutate: ({ optimisticItem }) => {
+  return useMutation<CartSummary, Error, AddCartItemVars, AddCartItemContext>({
+    onMutate: ({ variantId, optimisticItem }) => {
+      // Capture previous qty before optimistic update (used for toast in onSuccess)
+      const previousQty =
+        useCartStore.getState().serverCart?.items.find((i) => i.variant_id === variantId)
+          ?.quantity ?? 0;
       addItemStore(optimisticItem);
-      return { variantId: optimisticItem.variant_id };
+      return { variantId, previousQty };
     },
     mutationFn: async ({ variantId, quantity }): Promise<CartSummary> => {
       const cartId = await ensureCartId();
@@ -59,8 +73,10 @@ export function useAddCartItem() {
       return data;
     },
     onSuccess: (cart) => {
+      // Update both Zustand and TanStack cache immediately from the server response.
+      // No invalidateQueries: the returned CartSummary IS the authoritative state.
       useCartStore.getState().setServerCart(cart);
-      queryClient.invalidateQueries({ queryKey: queryKeys.cart.session });
+      queryClient.setQueryData(queryKeys.cart.session, cart);
     },
     onError: (_err, _vars, context) => {
       if (context?.variantId) removeItemStore(context.variantId);

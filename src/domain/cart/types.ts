@@ -68,6 +68,27 @@ export interface CartItemDetail {
   low_stock: boolean;
 }
 
+// ── Add-to-cart merge result — transient, only present on addCartItem response ─
+
+/**
+ * Metadata about what happened during an addCartItem call.
+ * Used by the client to show accurate feedback toasts.
+ * Chosen behavior: ADDITIVE — new qty is added on top of existing cart qty.
+ */
+export interface CartAddResult {
+  variant_id: string;
+  /** Quantity in cart BEFORE this call (0 if brand new item). */
+  previous_quantity: number;
+  /** Quantity the user requested to add. */
+  added_quantity: number;
+  /** Final quantity stored in cart after merge + capping. */
+  final_quantity: number;
+  /** True when final_quantity < previous_quantity + added_quantity (stock or hard cap hit). */
+  was_capped: boolean;
+  /** True when the item did not previously exist in the cart. */
+  was_new_item: boolean;
+}
+
 // ── Cart summary DTO (returned by all cart APIs) ──────────────────────────────
 
 export interface CartSummary {
@@ -84,6 +105,11 @@ export interface CartSummary {
   item_count: number;
   expires_at: string;
   updated_at: string;
+  /**
+   * Present only on the response to addCartItem. Not persisted or stored in Zustand.
+   * Use for toast/feedback. Undefined for getCart, removeCartItem, etc.
+   */
+  add_result?: CartAddResult;
 }
 
 export interface CartPricing {

@@ -12,7 +12,8 @@ export const SHIPPING_COST = 99;
 
 export const DEFAULT_PAGE_SIZE = 12;
 export const MAX_PAGE_SIZE = 48;
-export const CART_MAX_QUANTITY = 10;
+// Per-line safety cap. Stock is the real constraint; this is just a DB sanity limit.
+export const CART_MAX_QUANTITY = 50;
 
 export const ORDER_STATUSES = {
   draft:                 { label: "Draft",                  color: "gray"   },

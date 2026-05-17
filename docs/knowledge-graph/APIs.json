@@ -32,9 +32,11 @@
       "rate_limited": true,
       "ownership_check": "assertCartOwnership()",
       "domain": "cart",
-      "description": "Add item to cart.",
-      "body": "{ variant_id: UUID, quantity: number }",
-      "returns": "CartSummary"
+      "description": "ADDITIVE add-to-cart. If variant already in cart, adds requested qty on top (capped by stock). Returns CartSummary with add_result metadata for smart client toasts.",
+      "body": "{ variant_id: UUID, quantity: 1..50 }",
+      "returns": "CartSummary & { add_result: CartAddResult }",
+      "behavior": "ADDITIVE — same variant_id merges into existing line. See workflows.add_to_cart.",
+      "quantity_cap": "CART_MAX_QUANTITY=50 per line; effective cap = min(existing+requested, available_stock, 50)"
     },
     {
       "method": "PATCH",
@@ -43,9 +45,10 @@
       "rate_limited": true,
       "ownership_check": "assertCartOwnership()",
       "domain": "cart",
-      "description": "Update item quantity.",
-      "body": "{ quantity: number }",
-      "returns": "CartSummary"
+      "description": "REPLACE — sets exact quantity for the cart line. quantity=0 removes the item. Used by cart drawer +/- controls.",
+      "body": "{ quantity: 0..50 }",
+      "returns": "CartSummary",
+      "behavior": "REPLACE — distinct from POST which is ADDITIVE."
     },
     {
       "method": "DELETE",

@@ -11,50 +11,57 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useRemoveCartItem, useUpdateCartQuantity } from "@/features/cart/hooks/use-cart-mutations";
-import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST } from "@/lib/constants";
+import { FREE_SHIPPING_THRESHOLD, CART_MAX_QUANTITY, ROUTES, SHIPPING_COST } from "@/lib/constants";
 import { useFormatPrice } from "@/hooks/use-format-price";
 import { cn } from "@/lib/utils";
 import { useCartStore } from "@/store/cart-store";
 import { useNavLoadingStore } from "@/store/nav-loading-store";
+import type { CartItemDetail } from "@/domain/cart/types";
+import type { CartItemWithProduct } from "@/types";
 
 import { QuantitySelector } from "./quantity-selector";
 
+/**
+ * CartDrawer renders items from serverCart.items (CartItemDetail) when the
+ * server cart is available — this is the source of truth after any mutation.
+ *
+ * Falls back to the legacy `items` (CartItemWithProduct) only during cold
+ * start, before the server cart has been fetched (useCartHydration path).
+ *
+ * This eliminates the split-brain between Zustand `items` and `serverCart`
+ * that caused stale quantities after Add-to-Cart.
+ */
 export function CartDrawer() {
-  const { isOpen, closeCart, items, subtotal, serverCart } = useCartStore();
-  // Badge and drawer must agree on count — both read from serverCart.item_count
-  // when available. Legacy `items` lags behind on first mount (useCartHydration
-  // is skipped once serverCart is set), causing the split-brain badge "2" / drawer "(0)" bug.
-  const displayCount = serverCart?.item_count ?? items.reduce((s, i) => s + i.quantity, 0);
+  const { isOpen, closeCart, items: legacyItems, serverCart } = useCartStore();
+
+  const displayCount = serverCart?.item_count ?? legacyItems.reduce((s, i) => s + i.quantity, 0);
   const isEmpty = displayCount === 0;
+
   const { mutate: removeItem } = useRemoveCartItem();
   const { mutate: updateQuantity } = useUpdateCartQuantity();
   const fmt = useFormatPrice();
   const router = useRouter();
   const [isNavigating, startNavigation] = useTransition();
   const startNavOverlay = useNavLoadingStore((s) => s.start);
-  // Track which variant IDs have a pending remove or quantity-update API call.
-  // Prevents double-clicks and gives per-row visual feedback.
-  const [pendingVariants, setPendingVariants] = useState<Set<string>>(new Set());
 
-  const markPending = useCallback((variantId: string) => {
-    setPendingVariants((prev) => new Set(prev).add(variantId));
+  // Per-row pending state — prevents double-clicks and gives visual feedback
+  const [pendingVariants, setPendingVariants] = useState<Set<string>>(new Set());
+  const markPending = useCallback((id: string) => {
+    setPendingVariants((prev) => new Set(prev).add(id));
   }, []);
-  const unmarkPending = useCallback((variantId: string) => {
+  const unmarkPending = useCallback((id: string) => {
     setPendingVariants((prev) => {
       const next = new Set(prev);
-      next.delete(variantId);
+      next.delete(id);
       return next;
     });
   }, []);
 
   const handleRemove = useCallback(
     (variantId: string) => {
-      if (pendingVariants.has(variantId)) return; // already in-flight
+      if (pendingVariants.has(variantId)) return;
       markPending(variantId);
-      removeItem(
-        { variantId },
-        { onSettled: () => unmarkPending(variantId) },
-      );
+      removeItem({ variantId }, { onSettled: () => unmarkPending(variantId) });
     },
     [pendingVariants, markPending, unmarkPending, removeItem],
   );
@@ -63,15 +70,18 @@ export function CartDrawer() {
     (variantId: string, quantity: number) => {
       if (pendingVariants.has(variantId)) return;
       markPending(variantId);
-      updateQuantity(
-        { variantId, quantity },
-        { onSettled: () => unmarkPending(variantId) },
-      );
+      updateQuantity({ variantId, quantity }, { onSettled: () => unmarkPending(variantId) });
     },
     [pendingVariants, markPending, unmarkPending, updateQuantity],
   );
 
-  const sub = subtotal();
+  // Pricing from server cart when available; fallback to legacy computation
+  const sub = serverCart
+    ? serverCart.pricing.subtotal
+    : legacyItems.reduce((s, i) => {
+        const price = i.variant.price ?? i.variant.product.base_price;
+        return s + price * i.quantity;
+      }, 0);
   const shipping = sub >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
   const total = sub + shipping;
 
@@ -79,9 +89,7 @@ export function CartDrawer() {
     <Sheet open={isOpen} onOpenChange={(open) => !open && closeCart()}>
       <SheetContent side="right" className="flex w-full flex-col sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>
-            Shopping Cart ({displayCount})
-          </SheetTitle>
+          <SheetTitle>Shopping Cart ({displayCount})</SheetTitle>
           <SheetDescription className="sr-only">
             Review and manage items in your shopping cart
           </SheetDescription>
@@ -98,85 +106,32 @@ export function CartDrawer() {
           </div>
         ) : (
           <>
-            {/* Items */}
             <div className="flex-1 overflow-y-auto py-4">
               <ul className="divide-y">
-                {items.map((item) => {
-                  const product = item.variant.product;
-                  const price = item.variant.price ?? product.base_price;
-                  // Pick the color-specific image when the variant has a color option.
-                  // Images are seeded with alt_text = "Product Name — ColorName".
-                  const variantColor = (item.variant.options as { color?: string } | null)?.color;
-                  const image = variantColor
-                    ? (product.images.find((img) =>
-                        img.alt_text?.toLowerCase().includes(variantColor.toLowerCase())
-                      ) ?? product.images[0])
-                    : product.images[0];
-                  const isPending = pendingVariants.has(item.variant_id);
-
-                  return (
-                    <li
-                      key={item.variant_id}
-                      className={cn(
-                        "flex gap-3 py-4 transition-opacity duration-150",
-                        isPending && "opacity-50 pointer-events-none",
-                      )}
-                    >
-                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border bg-muted">
-                        {image && (
-                          <Image
-                            src={image.url}
-                            alt={product.name}
-                            fill
-                            className="object-cover"
-                            sizes="64px"
-                          />
-                        )}
-                      </div>
-                      <div className="flex flex-1 flex-col gap-1">
-                        <Link
-                          href={ROUTES.product(product.slug)}
-                          onClick={closeCart}
-                          className="line-clamp-2 text-sm font-medium hover:text-primary"
-                        >
-                          {product.name}
-                        </Link>
-                        {item.variant.name !== "Default" && (
-                          <p className="text-xs text-muted-foreground">{item.variant.name}</p>
-                        )}
-                        <div className="flex items-center justify-between">
-                          <QuantitySelector
-                            value={item.quantity}
-                            onChange={(q) => handleQtyChange(item.variant_id, q)}
-                            disabled={isPending}
-                          />
-                          <div className="text-right">
-                            <p className="text-sm font-semibold">{fmt(price * item.quantity)}</p>
-                            {item.quantity > 1 && (
-                              <p className="text-xs text-muted-foreground">{fmt(price)} each</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleRemove(item.variant_id)}
-                        disabled={isPending}
-                        className="self-start text-muted-foreground hover:text-destructive disabled:cursor-not-allowed"
-                        aria-label="Remove item"
-                      >
-                        {isPending ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
+                {serverCart
+                  ? serverCart.items.map((item) => (
+                      <CartDrawerServerItem
+                        key={item.variant_id}
+                        item={item}
+                        isPending={pendingVariants.has(item.variant_id)}
+                        fmt={fmt}
+                        onRemove={handleRemove}
+                        onQtyChange={handleQtyChange}
+                      />
+                    ))
+                  : legacyItems.map((item) => (
+                      <CartDrawerLegacyItem
+                        key={item.variant_id}
+                        item={item}
+                        isPending={pendingVariants.has(item.variant_id)}
+                        fmt={fmt}
+                        onRemove={handleRemove}
+                        onQtyChange={handleQtyChange}
+                      />
+                    ))}
               </ul>
             </div>
 
-            {/* Summary */}
             <div className="space-y-3 border-t pt-4">
               <div className="flex justify-between text-sm">
                 <span>Subtotal</span>
@@ -225,5 +180,155 @@ export function CartDrawer() {
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+// ── Server cart item (source of truth) ────────────────────────────────────────
+
+interface ServerItemProps {
+  item: CartItemDetail;
+  isPending: boolean;
+  fmt: (n: number) => string;
+  onRemove: (variantId: string) => void;
+  onQtyChange: (variantId: string, qty: number) => void;
+}
+
+function CartDrawerServerItem({ item, isPending, fmt, onRemove, onQtyChange }: ServerItemProps) {
+  return (
+    <li
+      className={cn(
+        "flex gap-3 py-4 transition-opacity duration-150",
+        isPending && "pointer-events-none opacity-50",
+      )}
+    >
+      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border bg-muted">
+        {item.image_url && (
+          <Image
+            src={item.image_url}
+            alt={item.product_name}
+            fill
+            className="object-cover"
+            sizes="64px"
+          />
+        )}
+      </div>
+
+      <div className="flex flex-1 flex-col gap-1">
+        <span className="line-clamp-2 text-sm font-medium">{item.product_name}</span>
+        {item.variant_name && (
+          <p className="text-xs text-muted-foreground">{item.variant_name}</p>
+        )}
+        {item.low_stock && item.available_stock > 0 && (
+          <p className="text-xs text-amber-600">Only {item.available_stock} left</p>
+        )}
+        <div className="flex items-center justify-between">
+          <QuantitySelector
+            value={item.quantity}
+            max={Math.min(item.available_stock, CART_MAX_QUANTITY)}
+            onChange={(q) => onQtyChange(item.variant_id, q)}
+            disabled={isPending}
+          />
+          <div className="text-right">
+            <p className="text-sm font-semibold">{fmt(item.current_unit_price * item.quantity)}</p>
+            {item.quantity > 1 && (
+              <p className="text-xs text-muted-foreground">{fmt(item.current_unit_price)} each</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={() => onRemove(item.variant_id)}
+        disabled={isPending}
+        className="self-start text-muted-foreground hover:text-destructive disabled:cursor-not-allowed"
+        aria-label="Remove item"
+      >
+        {isPending ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Trash2 className="h-4 w-4" />
+        )}
+      </button>
+    </li>
+  );
+}
+
+// ── Legacy item (cold-start fallback only) ─────────────────────────────────────
+
+interface LegacyItemProps {
+  item: CartItemWithProduct;
+  isPending: boolean;
+  fmt: (n: number) => string;
+  onRemove: (variantId: string) => void;
+  onQtyChange: (variantId: string, qty: number) => void;
+}
+
+function CartDrawerLegacyItem({ item, isPending, fmt, onRemove, onQtyChange }: LegacyItemProps) {
+  const product = item.variant.product;
+  const price = item.variant.price ?? product.base_price;
+  const variantColor = (item.variant.options as { color?: string } | null)?.color;
+  const image = variantColor
+    ? (product.images.find((img) =>
+        img.alt_text?.toLowerCase().includes(variantColor.toLowerCase()),
+      ) ?? product.images[0])
+    : product.images[0];
+
+  return (
+    <li
+      className={cn(
+        "flex gap-3 py-4 transition-opacity duration-150",
+        isPending && "pointer-events-none opacity-50",
+      )}
+    >
+      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border bg-muted">
+        {image && (
+          <Image
+            src={image.url}
+            alt={product.name}
+            fill
+            className="object-cover"
+            sizes="64px"
+          />
+        )}
+      </div>
+
+      <div className="flex flex-1 flex-col gap-1">
+        <Link
+          href={ROUTES.product(product.slug)}
+          className="line-clamp-2 text-sm font-medium hover:text-primary"
+        >
+          {product.name}
+        </Link>
+        {item.variant.name !== "Default" && (
+          <p className="text-xs text-muted-foreground">{item.variant.name}</p>
+        )}
+        <div className="flex items-center justify-between">
+          <QuantitySelector
+            value={item.quantity}
+            onChange={(q) => onQtyChange(item.variant_id, q)}
+            disabled={isPending}
+          />
+          <div className="text-right">
+            <p className="text-sm font-semibold">{fmt(price * item.quantity)}</p>
+            {item.quantity > 1 && (
+              <p className="text-xs text-muted-foreground">{fmt(price)} each</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={() => onRemove(item.variant_id)}
+        disabled={isPending}
+        className="self-start text-muted-foreground hover:text-destructive disabled:cursor-not-allowed"
+        aria-label="Remove item"
+      >
+        {isPending ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Trash2 className="h-4 w-4" />
+        )}
+      </button>
+    </li>
   );
 }

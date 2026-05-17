@@ -143,12 +143,14 @@ async function buildCartSummary(cartId: string): Promise<CartSummary> {
     return buildEmptyCartSummary(cartRow);
   }
 
-  // Fetch current variant/product/inventory data for all items at once
+  // Fetch current variant/product/inventory data for all items at once.
+  // options — needed to build variant_name ("Black / XL") and pick color-specific image.
+  // alt_text — needed to match the colour-variant image (seed images are tagged by colour in alt_text).
   const variantIds = rawItems.map((i) => i.variant_id);
   const { data: variants } = await db
     .from("product_variants")
     .select(
-      "id, price, is_active, sku, product:products(id, name, base_price, is_active, images:product_images(url)), inventory_levels(quantity, reserved)",
+      "id, price, is_active, sku, options, product:products(id, name, base_price, is_active, images:product_images(url, alt_text)), inventory_levels(quantity, reserved)",
     )
     .in("id", variantIds);
 
@@ -210,8 +212,17 @@ async function buildCartSummary(cartId: string): Promise<CartSummary> {
       warnings.push({ type: "LOW_STOCK", variant_id: raw.variant_id, available, product_name: variant.product.name });
     }
 
-    const images = variant.product.images ?? [];
-    const imageUrl = images.length > 0 ? (images[0] as { url: string }).url : null;
+    const images = (variant.product.images ?? []) as { url: string; alt_text?: string | null }[];
+    // Prefer the colour-specific image (alt_text contains the colour name, e.g. "Black").
+    // Falls back to the first product image if no colour match is found.
+    const variantColor =
+      typeof variant.options === "object" && variant.options !== null
+        ? (variant.options as Record<string, string>).color ?? null
+        : null;
+    const colorImage = variantColor
+      ? images.find((img) => img.alt_text?.toLowerCase().includes(variantColor.toLowerCase()))
+      : null;
+    const imageUrl = (colorImage ?? images[0])?.url ?? null;
 
     items.push({
       id: raw.id,
@@ -412,7 +423,7 @@ export async function addCartItem(
   const variant = await fetchVariant(input.variant_id);
   const available = sumAvailableStock(variant.inventory_levels);
 
-  // Check if already in cart
+  // Check if already in cart — ADDITIVE behavior: new = existing + requested
   const { data: existing } = await db
     .from("cart_items")
     .select("id, quantity")
@@ -420,14 +431,20 @@ export async function addCartItem(
     .eq("variant_id", input.variant_id)
     .single();
 
-  const requestedTotal = (existing?.quantity ?? 0) + input.quantity;
-  const cappedQty = Math.min(requestedTotal, CART_MAX_QUANTITY);
+  const previousQty = existing?.quantity ?? 0;
+  const requestedTotal = previousQty + input.quantity;
+  // Cap: stock is the real constraint; CART_MAX_QUANTITY is a hard safety limit
+  const cappedQty = Math.min(requestedTotal, available, CART_MAX_QUANTITY);
+  const wasCapped = cappedQty < requestedTotal;
 
-  if (available < cappedQty) throw new QuantityExceedsStockError(available);
+  // If stock is completely exhausted, reject rather than silently no-op
+  if (available === 0) throw new QuantityExceedsStockError(0);
+  // If cap would leave qty unchanged (already maxed out), still allow the upsert
+  // but the add_result will reveal it was capped so the client can show feedback.
 
   const serverPrice = variant.price ?? (variant.product?.base_price ?? 0);
 
-  // Upsert: insert or update existing item
+  // Upsert: insert new item or additively merge into existing line
   await db.from("cart_items").upsert(
     {
       cart_id: cartId,
@@ -442,10 +459,27 @@ export async function addCartItem(
   await emitCartEvent(db, "item_added", {
     cartId,
     actorId: identity.user_id,
-    metadata: { variant_id: input.variant_id, quantity: input.quantity, capped_to: cappedQty },
+    metadata: {
+      variant_id: input.variant_id,
+      previous_quantity: previousQty,
+      added_quantity: input.quantity,
+      final_quantity: cappedQty,
+      was_capped: wasCapped,
+    },
   });
 
-  return buildCartSummary(cartId);
+  const summary = await buildCartSummary(cartId);
+  return {
+    ...summary,
+    add_result: {
+      variant_id: input.variant_id,
+      previous_quantity: previousQty,
+      added_quantity: input.quantity,
+      final_quantity: cappedQty,
+      was_capped: wasCapped,
+      was_new_item: previousQty === 0,
+    },
+  };
 }
 
 /**
