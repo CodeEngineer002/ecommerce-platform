@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo, useState } from "react";
+import { useRef, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { Pencil, X, ExternalLink } from "lucide-react";
 
@@ -84,15 +84,18 @@ function buildTrackingUrl(carrier: string, trackingNumber: string): string {
 export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, shipmentType = "outbound_original", requestId, onSaved }: Props) {
   const isUpdate = Boolean(fulfillment?.id);
 
-  // Auto-generate tracking number once when no tracking exists yet
-  const autoTracking = useMemo(
-    () => fulfillment?.tracking_number ?? generateTrackingNumber(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-
   const [carrier,           setCarrier]           = useState(fulfillment?.carrier ?? "");
-  const [trackingNumber,    setTrackingNumber]     = useState(autoTracking);
+  // Start empty on server; useEffect sets auto-generated value on client only.
+  // This prevents SSR hydration mismatch caused by crypto.getRandomValues().
+  const [trackingNumber,    setTrackingNumber]     = useState(fulfillment?.tracking_number ?? "");
+
+  useEffect(() => {
+    if (!fulfillment?.tracking_number) {
+      setTrackingNumber(generateTrackingNumber());
+    }
+  // Run once on mount (client only)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [trackingUrl,       setTrackingUrl]        = useState(fulfillment?.tracking_url ?? "");
   const [estimatedDelivery, setEstimatedDelivery]  = useState(
     fulfillment?.estimated_delivery

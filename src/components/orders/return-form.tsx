@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PackageX, RefreshCw, Undo2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, PackageX, RefreshCw, Undo2 } from "lucide-react";
 
 import { useRequestReturn } from "@/features/orders/hooks/use-orders";
 import type { ReturnItem } from "@/features/orders/services/order.service";
@@ -35,6 +35,15 @@ const ITEM_CONDITIONS = [
   { value: "defective", label: "Defective / Not working" },
 ] as const;
 
+interface InventoryItemCheck {
+  item_id:      string;
+  variant_id:   string | null;
+  product_name: string;
+  variant_name: string | null;
+  available_qty: number | null;
+  is_available:  boolean;
+}
+
 interface Props {
   orderId:    string;
   orderItems: OrderItem[];
@@ -50,7 +59,71 @@ export function ReturnForm({ orderId, orderItems }: Props) {
   const [returnQtys,  setReturnQtys]  = useState<Record<string, number>>({});
   const [conditions,  setConditions]  = useState<Record<string, string>>({});
 
+  // Inventory state — used when requestType = 'replacement'
+  const [inventoryMap,     setInventoryMap]     = useState<Record<string, InventoryItemCheck>>({});
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const checkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const selectedItems = Object.entries(returnQtys).filter(([, qty]) => qty > 0);
+
+  // Check stock availability for selected items when replacement is chosen
+  const checkInventory = useCallback(
+    async (itemIds: string[]) => {
+      if (itemIds.length === 0) {
+        setInventoryMap({});
+        return;
+      }
+      setInventoryLoading(true);
+      try {
+        const qs = itemIds.join(",");
+        const res = await fetch(
+          `/api/orders/${orderId}/replacement-availability?item_ids=${qs}`,
+        );
+        if (!res.ok) throw new Error("Failed");
+        const data = (await res.json()) as {
+          data: { all_available: boolean; items: InventoryItemCheck[] };
+        };
+        const map: Record<string, InventoryItemCheck> = {};
+        for (const item of data.data.items) {
+          map[item.item_id] = item;
+        }
+        setInventoryMap(map);
+      } catch {
+        setInventoryMap({});
+      } finally {
+        setInventoryLoading(false);
+      }
+    },
+    [orderId],
+  );
+
+  // Debounce check when selected items change (only for replacement)
+  useEffect(() => {
+    if (requestType !== "replacement") {
+      setInventoryMap({});
+      return;
+    }
+    const ids = selectedItems.map(([id]) => id);
+    if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
+    checkTimeoutRef.current = setTimeout(() => checkInventory(ids), 400);
+    return () => {
+      if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestType, JSON.stringify(selectedItems.map(([id]) => id)), checkInventory]);
+
+  // Also re-run when request type switches to replacement
+  useEffect(() => {
+    if (requestType === "replacement" && selectedItems.length > 0) {
+      checkInventory(selectedItems.map(([id]) => id));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestType]);
+  const oosItems = selectedItems.filter(
+    ([id]) => inventoryMap[id] && !inventoryMap[id].is_available,
+  );
+  const hasOOS = requestType === "replacement" && oosItems.length > 0;
+
   const isValid =
     requestType !== null &&
     reason.trim() !== "" &&
@@ -147,6 +220,27 @@ export function ReturnForm({ orderId, orderItems }: Props) {
                     <p className="text-xs text-muted-foreground">
                       Ordered: {item.quantity} unit{item.quantity > 1 ? "s" : ""}
                     </p>
+
+                    {/* Stock badge — only shown for replacement when item is selected */}
+                    {requestType === "replacement" && returnQtys[item.id] > 0 && (
+                      <div className="mt-1">
+                        {inventoryLoading ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <Loader2 className="h-3 w-3 animate-spin" /> Checking stock…
+                          </span>
+                        ) : inventoryMap[item.id] ? (
+                          inventoryMap[item.id].is_available ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900 dark:text-green-300">
+                              <CheckCircle2 className="h-3 w-3" /> In Stock
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900 dark:text-red-300">
+                              <AlertTriangle className="h-3 w-3" /> Out of Stock
+                            </span>
+                          )
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Label htmlFor={`qty-${item.id}`} className="text-xs text-muted-foreground">
@@ -253,6 +347,31 @@ export function ReturnForm({ orderId, orderItems }: Props) {
           )}
         </CardContent>
       </Card>
+
+      {/* OOS warning banner — shown for replacement when any selected item is OOS */}
+      {hasOOS && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div className="space-y-1">
+              <p className="font-medium text-amber-800 dark:text-amber-300">
+                Some items are currently out of stock
+              </p>
+              <p className="text-amber-700 dark:text-amber-400">
+                Replacement may not be possible right now. You can:
+              </p>
+              <ul className="list-disc pl-4 text-amber-700 dark:text-amber-400 space-y-0.5">
+                <li>
+                  Switch to <strong>Return</strong> to get a refund instead.
+                </li>
+                <li>
+                  Submit the replacement request anyway — our team will contact you if the item cannot be sourced.
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex justify-end gap-3">

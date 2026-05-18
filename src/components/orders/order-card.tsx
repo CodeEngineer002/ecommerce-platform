@@ -54,6 +54,10 @@ export interface OrderCardData {
   hasTracking:    boolean;
   /** ISO timestamp of when the order was marked delivered (from order_status_history) */
   delivered_at:   string | null;
+  /** 'purchase' | 'replacement' — defaults to 'purchase' for pre-migration rows */
+  order_type:     string;
+  /** Parent order number shown on replacement order cards */
+  parent_order_number?: string | null;
 }
 
 interface Props {
@@ -150,8 +154,12 @@ function OrderActions({
   const journey = ORDER_JOURNEY[status];
   const track   = journey?.track ?? "active";
 
+  const isReplacement = order.order_type === "replacement";
+
   const canCancel = isOrderCancellable(status);
-  const canReturn = (status === "delivered" || status === "partially_returned") &&
+  // Replacement orders cannot initiate return/replace themselves (not yet supported)
+  const canReturn = !isReplacement &&
+    (status === "delivered" || status === "partially_returned") &&
     !order.returns.some((r) =>
       ["requested", "approved", "pickup_scheduled", "in_transit"].includes(r.status),
     );
@@ -208,8 +216,9 @@ function OrderActions({
 }
 
 export function OrderCard({ order, orderHref, returnHref, fmt }: Props) {
-  const status  = order.status as OrderStatus;
-  const journey = ORDER_JOURNEY[status] ?? { label: status, color: "gray", hint: "", track: "active" };
+  const status        = order.status as OrderStatus;
+  const journey       = ORDER_JOURNEY[status] ?? { label: status, color: "gray", hint: "", track: "active" };
+  const isReplacement = order.order_type === "replacement";
 
   const colorClass: Record<string, string> = {
     green:  "border-l-green-500 bg-green-50/30 dark:bg-green-950/10",
@@ -222,7 +231,11 @@ export function OrderCard({ order, orderHref, returnHref, fmt }: Props) {
   };
 
   return (
-    <Card className={`overflow-hidden border-l-4 ${colorClass[journey.color] ?? colorClass.gray}`}>
+    <Card className={`overflow-hidden border-l-4 ${
+      isReplacement
+        ? "border-l-purple-500 bg-purple-50/30 dark:bg-purple-950/10"
+        : colorClass[journey.color] ?? colorClass.gray
+    }`}>
       <CardContent className="p-0">
         {/* Header row */}
         <div className="flex items-start justify-between gap-3 px-5 pt-4">
@@ -231,14 +244,26 @@ export function OrderCard({ order, orderHref, returnHref, fmt }: Props) {
               <TrackIcon status={status} />
             </div>
             <div className="min-w-0">
-              <p className="font-semibold text-sm leading-tight">
-                Order #{order.order_number}
-              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-semibold text-sm leading-tight">
+                  Order #{order.order_number}
+                </p>
+                {isReplacement && (
+                  <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                    Replacement Order
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {new Date(order.created_at).toLocaleDateString("en-IN", {
                   day: "numeric", month: "short", year: "numeric",
                 })}
               </p>
+              {isReplacement && order.parent_order_number && (
+                <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
+                  Replacement for #{order.parent_order_number}
+                </p>
+              )}
             </div>
           </div>
           <StatusBadge status={status} />
@@ -344,8 +369,9 @@ export function filterOrdersByTab(orders: OrderCardData[], tab: OrderTab): Order
     const journey = ORDER_JOURNEY[status];
     const track   = journey?.track ?? "active";
 
-    if (tab === "active")    return track === "active" && status !== "delivered";
-    if (tab === "delivered") return status === "delivered";
+    // Replacement orders follow active order flow (confirmed → delivered)
+    if (tab === "active")    return (track === "active" && status !== "delivered") || o.order_type === "replacement";
+    if (tab === "delivered") return status === "delivered" && o.order_type !== "replacement";
     if (tab === "cancelled") return track === "cancelled";
     if (tab === "returns")   return track === "return" || track === "replacement";
     if (tab === "refunds")   return track === "refund";

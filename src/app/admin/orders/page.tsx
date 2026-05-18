@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Loader2 } from "lucide-react";
 
 import { DataTable, type ColumnDef } from "@/components/common/data-table";
 import { PageHeader } from "@/components/common/page-header";
@@ -38,7 +39,9 @@ const ALLOWED_TRANSITIONS: Record<string, OrderStatus[]> = {
   return_in_transit:       ["returned"],
   returned:                ["refunded", "replacement_shipped"],
   replacement_requested:   ["replacement_approved", "replacement_rejected"],
-  replacement_approved:    ["replacement_shipped"],
+  // No manual transitions — replacement ORDER manages its own shipping lifecycle.
+  // Parent order auto-closes to delivered when replacement order is delivered.
+  replacement_approved:    [],
   replacement_shipped:     ["replacement_delivered"],
   refund_requested:        ["refund_processing"],
   refund_processing:       ["refunded", "partially_refunded"],
@@ -57,17 +60,28 @@ const ALLOWED_TRANSITIONS: Record<string, OrderStatus[]> = {
 
 const columns = (
   onStatusChange: (orderId: string, status: OrderStatus) => void,
+  updatingOrderId: string | null,
 ): ColumnDef<OrderWithItems>[] => [
   {
     header: "Order",
-    cell: (o) => (
-      <Link href={`/admin/orders/${o.id}`} className="hover:underline">
-        <p className="font-mono font-medium text-primary">{o.order_number}</p>
-        <p className="text-xs text-muted-foreground">
-          {o.items.length} item{o.items.length !== 1 ? "s" : ""}
-        </p>
-      </Link>
-    ),
+    cell: (o) => {
+      const orderType = (o as OrderWithItems & { order_type?: string }).order_type ?? "purchase";
+      return (
+        <Link href={`/admin/orders/${o.id}`} className="hover:underline">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-mono font-medium text-primary">{o.order_number}</p>
+            {orderType === "replacement" && (
+              <span className="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                Replacement
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {o.items.length} item{o.items.length !== 1 ? "s" : ""}
+          </p>
+        </Link>
+      );
+    },
   },
   {
     header: "Date",
@@ -81,18 +95,43 @@ const columns = (
   {
     header: "Status",
     align: "center",
-    cell: (o) => <StatusBadge status={o.status} />,
+    cell: (o) => {
+      const isUpdating = updatingOrderId === o.id;
+      return (
+        <div className="flex items-center justify-center gap-2">
+          <StatusBadge status={o.status} />
+          {isUpdating && (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+          )}
+        </div>
+      );
+    },
   },
   {
     header: "Update Status",
     align: "center",
     cell: (o) => {
       const nextStatuses = ALLOWED_TRANSITIONS[o.status] ?? [];
+      const isUpdating = updatingOrderId === o.id;
+
       if (nextStatuses.length === 0) {
         return <span className="text-xs text-muted-foreground">—</span>;
       }
+
+      if (isUpdating) {
+        return (
+          <div className="flex h-8 w-40 items-center justify-center gap-2 rounded-md border bg-muted/50 px-3 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Updating…
+          </div>
+        );
+      }
+
       return (
-        <Select onValueChange={(v) => onStatusChange(o.id, v as OrderStatus)}>
+        <Select
+          onValueChange={(v) => onStatusChange(o.id, v as OrderStatus)}
+          disabled={isUpdating}
+        >
           <SelectTrigger className="h-8 w-40">
             <SelectValue placeholder="Move to…" />
           </SelectTrigger>
@@ -121,18 +160,28 @@ const columns = (
 export default function AdminOrdersPage() {
   const [page, setPage] = useState(1);
   const { data, isLoading } = useAdminOrders(page);
-  const { mutate: updateStatus } = useAdminUpdateOrderStatus();
+  const {
+    mutate: updateStatus,
+    isPending,
+    variables,
+  } = useAdminUpdateOrderStatus();
 
   const orders = data?.data ?? [];
   const total = data?.count ?? 0;
   const totalPages = Math.ceil(total / 20);
+
+  // Which order row is currently being updated (null when idle)
+  const updatingOrderId = isPending ? (variables?.orderId ?? null) : null;
 
   return (
     <div className="space-y-6">
       <PageHeader title="Orders" description={`${total} total orders`} />
 
       <DataTable
-        columns={columns((orderId, status) => updateStatus({ orderId, status }))}
+        columns={columns(
+          (orderId, status) => updateStatus({ orderId, status }),
+          updatingOrderId,
+        )}
         data={orders}
         keyFn={(o) => o.id}
         isLoading={isLoading}

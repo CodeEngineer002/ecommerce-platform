@@ -2952,6 +2952,9 @@ export type Database = {
           id: string
           notes: string | null
           order_number: string
+          order_type: string
+          parent_order_id: string | null
+          replacement_request_id: string | null
           shipping: number
           shipping_address: Json
           shipping_method: string | null
@@ -2972,6 +2975,9 @@ export type Database = {
           id?: string
           notes?: string | null
           order_number: string
+          order_type?: string
+          parent_order_id?: string | null
+          replacement_request_id?: string | null
           shipping?: number
           shipping_address: Json
           shipping_method?: string | null
@@ -2992,6 +2998,9 @@ export type Database = {
           id?: string
           notes?: string | null
           order_number?: string
+          order_type?: string
+          parent_order_id?: string | null
+          replacement_request_id?: string | null
           shipping?: number
           shipping_address?: Json
           shipping_method?: string | null
@@ -4881,7 +4890,27 @@ export type Database = {
         Returns: string
       }
       approve_return: {
-        Args: { p_admin_id: string; p_note?: string; p_return_id: string }
+        Args: { p_admin_id: string; p_note?: string; p_return_id: string; p_force_create?: boolean }
+        Returns: undefined
+      }
+      check_replacement_inventory: {
+        Args: { p_return_id: string }
+        Returns: Json
+      }
+      restock_returned_items: {
+        Args: { p_return_id: string; p_warehouse_id?: string; p_admin_id?: string }
+        Returns: undefined
+      }
+      mark_return_pickup_scheduled: {
+        Args: { p_return_id: string; p_actor_id?: string; p_note?: string }
+        Returns: undefined
+      }
+      mark_return_collected: {
+        Args: { p_return_id: string; p_actor_id?: string; p_actor_type?: string; p_note?: string }
+        Returns: undefined
+      }
+      mark_return_received: {
+        Args: { p_return_id: string; p_actor_id?: string; p_warehouse_id?: string; p_note?: string }
         Returns: undefined
       }
       auto_queue_confirmed_orders: { Args: never; Returns: number }

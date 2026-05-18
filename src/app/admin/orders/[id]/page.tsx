@@ -6,6 +6,7 @@ import { CodCollectionPanel } from "@/components/admin/orders/cod-collection-pan
 import { AdminTrackingForm } from "@/components/admin/orders/tracking-form";
 import type { FulfillmentData } from "@/components/admin/orders/tracking-form";
 import { AdminReturnActions } from "@/components/admin/orders/return-actions";
+import { ReturnPickupActions } from "@/components/admin/orders/return-pickup-actions";
 import { StatusBadge } from "@/components/common/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,20 +31,27 @@ export default async function AdminOrderDetailPage({ params }: Props) {
   // Fetch order with items
   const { data: order } = await db
     .from("orders")
-    .select(
-      "id, order_number, status, created_at, shipping_address, subtotal, tax, shipping, discount, total, user_id, items:order_items(*)",
-    )
+    .select("*, items:order_items(*)")
     .eq("id", orderId)
     .single();
 
   if (!order) notFound();
 
-  // Fetch fulfillments, payment, return requests, and status history in parallel
+  const typedOrder = order as typeof order & {
+    order_type: string;
+    parent_order_id: string | null;
+    replacement_request_id: string | null;
+  };
+  const isReplacementOrder = typedOrder.order_type === "replacement";
+
+  // Fetch fulfillments, payment, return requests, status history, and linked orders in parallel
   const [
     { data: allFulfillmentsRaw },
     { data: paymentRaw },
     { data: returnsRaw },
     { data: statusHistoryRaw },
+    { data: replacementOrdersRaw },
+    { data: parentOrderRaw },
   ] = await Promise.all([
     db
       .from("order_fulfillments")
@@ -71,10 +79,39 @@ export default async function AdminOrderDetailPage({ params }: Props) {
       .select("id, from_status, to_status, reason, created_at")
       .eq("order_id", orderId)
       .order("created_at", { ascending: true }),
+    // Fetch system-generated replacement orders linked to this parent order
+    db
+      .from("orders")
+      .select("id, order_number, status, replacement_request_id")
+      .eq("parent_order_id", orderId)
+      .eq("order_type", "replacement"),
+    // If this IS a replacement order, fetch the parent order number for the back-link
+    typedOrder.parent_order_id
+      ? db
+          .from("orders")
+          .select("id, order_number")
+          .eq("id", typedOrder.parent_order_id)
+          .single()
+      : Promise.resolve({ data: null }),
   ]);
 
   type AllFulfillmentRow = FulfillmentData & { shipment_type: string; request_id: string | null };
   const allFulfillments = (allFulfillmentsRaw ?? []) as unknown as AllFulfillmentRow[];
+
+  type LinkedReplacementOrder = {
+    id: string;
+    order_number: string;
+    status: string;
+    replacement_request_id: string | null;
+  };
+  const linkedReplacementOrderMap = new Map<string, LinkedReplacementOrder>();
+  for (const ro of (replacementOrdersRaw ?? []) as unknown as LinkedReplacementOrder[]) {
+    if (ro.replacement_request_id) {
+      linkedReplacementOrderMap.set(ro.replacement_request_id, ro);
+    }
+  }
+
+  const parentOrder = parentOrderRaw as { id: string; order_number: string } | null;
 
   // Original outbound fulfillment for the tracking form
   const fulfillment = (
@@ -156,7 +193,14 @@ export default async function AdminOrderDetailPage({ params }: Props) {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Order #{order.order_number}</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold">Order #{order.order_number}</h1>
+            {isReplacementOrder && (
+              <span className="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-1 text-sm font-semibold text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                Replacement Order
+              </span>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
             Placed {formatDate(order.created_at)} at{" "}
             {new Date(order.created_at).toLocaleTimeString("en-IN", {
@@ -165,6 +209,17 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               hour12: true,
             })}
           </p>
+          {isReplacementOrder && parentOrder && (
+            <p className="mt-1 text-sm text-purple-600 dark:text-purple-400">
+              Replacement for{" "}
+              <Link
+                href={`/admin/orders/${parentOrder.id}`}
+                className="font-medium underline hover:text-purple-800"
+              >
+                #{parentOrder.order_number}
+              </Link>
+            </p>
+          )}
         </div>
         <StatusBadge status={order.status} />
       </div>
@@ -274,6 +329,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                   const isReplacement = r.request_type === "replacement";
                   const pickupShipment = returnShipmentMap.get(r.id);
                   const replacementShipment = replacementShipmentMap.get(r.id);
+                  const linkedReplacementOrder = linkedReplacementOrderMap.get(r.id);
 
                   return (
                     <div key={r.id} className="space-y-4 rounded-lg border p-4">
@@ -388,9 +444,36 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                         </div>
                       )}
 
-                      {/* Approve / reject actions (client component) — only for pending review */}
+                      {/* Linked replacement order — shown when system auto-created one on approval */}
+                      {isReplacement && linkedReplacementOrder && (
+                        <div className="rounded-md border border-purple-200 bg-purple-50/60 p-3 dark:border-purple-800 dark:bg-purple-950/20">
+                          <p className="text-xs font-medium text-purple-700 dark:text-purple-300 uppercase tracking-wide mb-2">
+                            Replacement Order Auto-Created
+                          </p>
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold font-mono">#{linkedReplacementOrder.order_number}</p>
+                              <p className="text-xs text-muted-foreground capitalize">
+                                {linkedReplacementOrder.status.replace(/_/g, " ")}
+                              </p>
+                            </div>
+                            <Button variant="outline" size="sm" asChild>
+                              <Link href={`/admin/orders/${linkedReplacementOrder.id}`}>
+                                Open Order <ExternalLink className="ml-1.5 h-3 w-3" />
+                              </Link>
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Approve / reject actions — only for pending requests */}
                       {r.status === "requested" && (
                         <AdminReturnActions returnId={r.id} requestType={r.request_type} />
+                      )}
+
+                      {/* Return pickup lifecycle — shown once approved through received */}
+                      {["approved", "pickup_scheduled", "in_transit", "received"].includes(r.status) && (
+                        <ReturnPickupActions returnId={r.id} returnStatus={r.status} />
                       )}
                     </div>
                   );

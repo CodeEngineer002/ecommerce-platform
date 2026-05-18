@@ -102,6 +102,27 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
     .eq("order_id", id)
     .order("created_at", { ascending: false });
 
+  // Fetch linked replacement orders (system-generated when a replacement request is approved)
+  const { data: replacementOrdersRaw } = await supabase
+    .from("orders")
+    .select("id, order_number, status, replacement_request_id")
+    .eq("parent_order_id", id)
+    .eq("order_type", "replacement");
+
+  type ReplacementOrderLink = {
+    id: string;
+    order_number: string;
+    status: string;
+    replacement_request_id: string | null;
+  };
+
+  const replacementOrderMap = new Map<string, ReplacementOrderLink>();
+  for (const ro of (replacementOrdersRaw ?? []) as unknown as ReplacementOrderLink[]) {
+    if (ro.replacement_request_id) {
+      replacementOrderMap.set(ro.replacement_request_id, ro);
+    }
+  }
+
   type ReturnRow = {
     id: string;
     status: string;
@@ -318,6 +339,7 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
                   const replacementShipment = replacementShipmentMap.get(r.id);
                   const isRejected = r.status === "rejected";
                   const isCancelled = r.status === "cancelled";
+                  const linkedReplacementOrder = replacementOrderMap.get(r.id);
 
                   return (
                     <div
@@ -389,6 +411,80 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
                           requestId={r.id}
                           requestType={r.request_type}
                         />
+                      )}
+
+                      {/* Return pickup status message — visible once approved */}
+                      {r.status === "approved" && (
+                        <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm dark:border-blue-800 dark:bg-blue-950/30">
+                          <span className="mt-0.5 shrink-0 text-blue-500">📦</span>
+                          <div>
+                            <p className="font-medium text-blue-800 dark:text-blue-300">Approved — Pickup Being Arranged</p>
+                            <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">
+                              Your request has been approved. Our delivery partner will contact you to schedule a pickup of the item.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {r.status === "pickup_scheduled" && (
+                        <div className="flex items-start gap-2 rounded-md border border-purple-200 bg-purple-50 px-3 py-2.5 text-sm dark:border-purple-800 dark:bg-purple-950/30">
+                          <span className="mt-0.5 shrink-0 text-purple-500">🚚</span>
+                          <div>
+                            <p className="font-medium text-purple-800 dark:text-purple-300">Pickup Scheduled</p>
+                            <p className="text-xs text-purple-700 dark:text-purple-400 mt-0.5">
+                              Our delivery partner is on the way to collect your item. Please keep the item ready.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {r.status === "in_transit" && (
+                        <div className="flex items-start gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-sm dark:border-indigo-800 dark:bg-indigo-950/30">
+                          <span className="mt-0.5 shrink-0 text-indigo-500">✅</span>
+                          <div>
+                            <p className="font-medium text-indigo-800 dark:text-indigo-300">Item Collected — On Its Way Back</p>
+                            <p className="text-xs text-indigo-700 dark:text-indigo-400 mt-0.5">
+                              Your item has been collected by our delivery partner and is on its way to our warehouse.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {r.status === "received" && (
+                        <div className="flex items-start gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2.5 text-sm dark:border-green-800 dark:bg-green-950/30">
+                          <span className="mt-0.5 shrink-0 text-green-500">🏭</span>
+                          <div>
+                            <p className="font-medium text-green-800 dark:text-green-300">Item Received at Warehouse</p>
+                            <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
+                              {isReplacement
+                                ? "Your item has been received. Your replacement order is being processed."
+                                : "Your item has been received. Refund processing will begin shortly."}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Linked replacement order card — shown when system auto-created a replacement order */}
+                      {isReplacement && linkedReplacementOrder && (
+                        <div className="rounded-md border border-purple-200 bg-purple-50/60 p-3 dark:border-purple-800 dark:bg-purple-950/20">
+                          <p className="text-xs font-medium text-purple-700 dark:text-purple-300 uppercase tracking-wide mb-2">
+                            Replacement Order Created
+                          </p>
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold">#{linkedReplacementOrder.order_number}</p>
+                              <p className="text-xs text-muted-foreground capitalize">
+                                {linkedReplacementOrder.status.replace(/_/g, " ")}
+                              </p>
+                            </div>
+                            <Link
+                              href={routes.order(linkedReplacementOrder.id)}
+                              className="text-xs font-medium text-purple-700 hover:text-purple-800 underline dark:text-purple-300"
+                            >
+                              View Order →
+                            </Link>
+                          </div>
+                        </div>
                       )}
 
                       {/* Return pickup tracking */}

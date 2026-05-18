@@ -6,8 +6,13 @@ import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-p
 import { NotFoundError, OrderStateError } from "@/lib/errors";
 
 const schema = z.object({
-  action: z.enum(["approve", "reject"]),
-  note:   z.string().max(500).optional(),
+  /**
+   * approve        — approve as-is (replacement creates replacement order; return starts return flow)
+   * approve_forced — replacement only; override OOS block and create replacement order anyway
+   * reject         — reject the request (note required)
+   */
+  action:       z.enum(["approve", "approve_forced", "reject"]),
+  note:         z.string().max(500).optional(),
 });
 
 // PATCH /api/admin/returns/[id]  — approve or reject a return request
@@ -30,11 +35,14 @@ export const PATCH = withApiHandler(
     }
     const { action, note } = parsed.data;
 
-    if (action === "approve") {
+    if (action === "approve" || action === "approve_forced") {
+      const forceCreate = action === "approve_forced";
+
       const { error } = await db.rpc("approve_return", {
-        p_return_id: returnId,
-        p_admin_id:  user.id,
-        p_note:      note ?? undefined,
+        p_return_id:    returnId,
+        p_admin_id:     user.id,
+        p_note:         note ?? undefined,
+        p_force_create: forceCreate,
       });
 
       if (error) {
@@ -44,6 +52,14 @@ export const PATCH = withApiHandler(
         }
         if (error.code === "P0006" || msg.includes("not in requested state")) {
           throw new OrderStateError(msg || "Return cannot be approved in its current state");
+        }
+        // P0012 = out of stock; surface a clean message to the UI
+        if (error.code === "P0012" || msg.toLowerCase().includes("out of stock")) {
+          return apiError(
+            msg || "One or more replacement items are out of stock",
+            409,
+            "REPLACEMENT_OOS",
+          );
         }
         throw new Error(msg || "Failed to approve return");
       }
@@ -70,10 +86,10 @@ export const PATCH = withApiHandler(
     }
 
     await logAdminAction(ctx, request, {
-      action: action === "approve" ? "approve_return" : "reject_return",
+      action: action === "reject" ? "reject_return" : "approve_return",
       entityType: "return",
       entityId: returnId,
-      metadata: { note },
+      metadata: { note, forced: action === "approve_forced" },
     });
 
     return apiSuccess({ success: true });

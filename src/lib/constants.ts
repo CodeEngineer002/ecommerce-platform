@@ -42,6 +42,21 @@ export const ORDER_STATUSES = {
   partially_returned:    { label: "Partially Returned",     color: "orange" },
   partially_refunded:    { label: "Partially Refunded",     color: "orange" },
   refunded:              { label: "Refunded",               color: "gray"   },
+
+  // ── order_returns.status values ──────────────────────────────────────────
+  // These are used by StatusBadge when displaying return/replacement request
+  // status (separate from order-level statuses above).
+  requested:                   { label: "Requested",                   color: "yellow" },
+  approved:                    { label: "Approved",                    color: "blue"   },
+  rejected:                    { label: "Rejected",                    color: "red"    },
+  pickup_scheduled:            { label: "Pickup Scheduled",            color: "purple" },
+  in_transit:                  { label: "Item Collected",              color: "purple" },
+  received:                    { label: "Received at Warehouse",       color: "blue"   },
+  inspected:                   { label: "Inspected",                   color: "blue"   },
+  accepted:                    { label: "Accepted",                    color: "green"  },
+  rejected_after_inspection:   { label: "Rejected After Inspection",   color: "red"    },
+  replaced:                    { label: "Replaced",                    color: "green"  },
+  closed:                      { label: "Closed",                      color: "gray"   },
 } as const;
 
 export const PAYMENT_PROVIDERS = {

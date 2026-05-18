@@ -26,8 +26,10 @@ export default async function LocaleOrdersPage({ params }: Props) {
   const countryKey = isValidCountry(country) ? (country as CountryCode) : "in";
   const { currencyCode, currencyLocale } = REGION_CONFIGS[countryKey];
 
-  // Fetch orders + items + return requests in one go
-  const { data: ordersRaw } = await supabase
+  // Main orders query — uses exactly the proven working columns (no new columns here).
+  // New columns (order_type, parent_order_id) are fetched separately below to avoid
+  // PostgREST schema-cache issues after migration.
+  const { data: ordersRaw, error: ordersError } = await supabase
     .from("orders")
     .select(`
       id,
@@ -50,7 +52,7 @@ export default async function LocaleOrdersPage({ params }: Props) {
         color,
         size
       ),
-      returns:order_returns (
+      returns:order_returns!order_id (
         id,
         status,
         created_at
@@ -63,8 +65,50 @@ export default async function LocaleOrdersPage({ params }: Props) {
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
-  // Check which orders have tracking info
+  if (ordersError) {
+    console.error("[orders page] supabase error message:", ordersError.message, "| code:", ordersError.code, "| details:", ordersError.details);
+  }
+
+  // All order IDs for this user (used in multiple sub-queries below)
   const orderIds = (ordersRaw ?? []).map((o) => o.id);
+
+  // Supplementary query: fetch order_type and parent_order_id separately so the main
+  // query is never broken by schema-cache timing after a migration.
+  type OrderMeta = { id: string; order_type: string; parent_order_id: string | null };
+  const orderMetaMap = new Map<string, OrderMeta>();
+
+  if (orderIds.length > 0) {
+    const { data: orderMetaRaw } = await supabase
+      .from("orders")
+      .select("id, order_type, parent_order_id")
+      .in("id", orderIds);
+
+    for (const m of (orderMetaRaw ?? []) as unknown as OrderMeta[]) {
+      orderMetaMap.set(m.id, {
+        id: m.id,
+        order_type: m.order_type ?? "purchase",
+        parent_order_id: m.parent_order_id ?? null,
+      });
+    }
+  }
+
+  // Fetch parent order numbers for replacement orders
+  const parentOrderIds = [...orderMetaMap.values()]
+    .filter((m) => m.parent_order_id)
+    .map((m) => m.parent_order_id as string);
+
+  const parentOrderNumberMap = new Map<string, string>();
+  if (parentOrderIds.length > 0) {
+    const { data: parentOrders } = await supabase
+      .from("orders")
+      .select("id, order_number")
+      .in("id", parentOrderIds);
+    for (const p of parentOrders ?? []) {
+      parentOrderNumberMap.set(p.id, p.order_number);
+    }
+  }
+
+  // Check which orders have tracking info
   const { data: fulfillments } = orderIds.length > 0
     ? await supabase
         .from("order_fulfillments")
@@ -118,8 +162,13 @@ export default async function LocaleOrdersPage({ params }: Props) {
       .filter((h) => h.to_status === "delivered")
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
+    const meta          = orderMetaMap.get(o.id);
+    const orderType     = meta?.order_type ?? "purchase";
+    const parentOrderId = meta?.parent_order_id ?? null;
     return {
-    ...(o as unknown as Omit<OrderCardData, "returns" | "hasTracking" | "items" | "delivered_at">),
+    ...(o as unknown as Omit<OrderCardData, "returns" | "hasTracking" | "items" | "delivered_at" | "order_type" | "parent_order_number">),
+    order_type:           orderType,
+    parent_order_number:  parentOrderId ? (parentOrderNumberMap.get(parentOrderId) ?? null) : null,
     returns:      (o.returns ?? []) as OrderCardData["returns"],
     hasTracking:  trackedSet.has(o.id),
     delivered_at: deliveredEntry?.created_at ?? null,

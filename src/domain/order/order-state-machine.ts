@@ -50,7 +50,11 @@ const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   return_in_transit:     ["returned"],
   returned:              ["refunded", "replacement_shipped"],
   replacement_requested: ["replacement_approved", "replacement_rejected"],
-  replacement_approved:  ["replacement_shipped"],
+  // After approval, the replacement ORDER (separate entity) manages its own
+  // shipping lifecycle. The parent order stays at replacement_approved until
+  // the replacement order is delivered (then system auto-closes to delivered).
+  // replacement_shipped is deprecated for new flow — kept only for legacy data.
+  replacement_approved:  ["delivered"],
   replacement_rejected:  ["delivered"],
   replacement_shipped:   ["replacement_delivered"],
   replacement_delivered: [],
