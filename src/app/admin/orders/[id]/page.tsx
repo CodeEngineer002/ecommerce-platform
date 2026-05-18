@@ -1,4 +1,4 @@
-import { ArrowLeft, ExternalLink, PackageX, RefreshCw, Undo2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle, ExternalLink, PackageX, RefreshCw, Undo2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { ORDER_JOURNEY } from "@/domain/order/order-journey";
+import type { OrderStatus } from "@/domain/order/order-state-machine";
 import { PERMISSIONS } from "@/lib/admin/permissions";
 import { requireAdminPermission } from "@/lib/admin/with-admin-permission";
 import { formatDate, formatPrice } from "@/lib/utils";
@@ -36,8 +38,13 @@ export default async function AdminOrderDetailPage({ params }: Props) {
 
   if (!order) notFound();
 
-  // Fetch fulfillments, payment, and return requests in parallel
-  const [{ data: allFulfillmentsRaw }, { data: paymentRaw }, { data: returnsRaw }] = await Promise.all([
+  // Fetch fulfillments, payment, return requests, and status history in parallel
+  const [
+    { data: allFulfillmentsRaw },
+    { data: paymentRaw },
+    { data: returnsRaw },
+    { data: statusHistoryRaw },
+  ] = await Promise.all([
     db
       .from("order_fulfillments")
       .select("id, carrier, tracking_number, tracking_url, estimated_delivery, status, shipment_type, request_id")
@@ -59,6 +66,11 @@ export default async function AdminOrderDetailPage({ params }: Props) {
       `)
       .eq("order_id", orderId)
       .order("created_at", { ascending: false }),
+    db
+      .from("order_status_history")
+      .select("id, from_status, to_status, reason, created_at")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: true }),
   ]);
 
   type AllFulfillmentRow = FulfillmentData & { shipment_type: string; request_id: string | null };
@@ -96,6 +108,15 @@ export default async function AdminOrderDetailPage({ params }: Props) {
   };
 
   const typedReturns = (returnsRaw ?? []) as unknown as ReturnRow[];
+
+  type StatusHistoryRow = {
+    id: string;
+    from_status: string | null;
+    to_status: string;
+    reason: string | null;
+    created_at: string;
+  };
+  const statusHistory = (statusHistoryRaw ?? []) as unknown as StatusHistoryRow[];
 
   const payment = paymentRaw as {
     id: string;
@@ -355,7 +376,19 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                         </div>
                       )}
 
-                      {/* Approve / reject actions (client component) */}
+                      {/* Cancelled by customer */}
+                      {r.status === "cancelled" && (
+                        <div className="rounded-md bg-muted/50 p-3">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                            Cancelled by customer
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            The customer withdrew this request. No further action needed.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Approve / reject actions (client component) — only for pending review */}
                       {r.status === "requested" && (
                         <AdminReturnActions returnId={r.id} requestType={r.request_type} />
                       )}
@@ -414,12 +447,18 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                       payment.status === "succeeded"
                         ? "text-green-600 font-medium"
                         : payment.status === "cancelled"
-                        ? "text-red-500 font-medium"
-                        : "text-amber-600 font-medium"
+                          ? "text-red-500 font-medium"
+                          : "text-amber-600 font-medium"
                     }>
-                      {payment.status === "cod_pending_collection"
-                        ? "Pending Collection"
-                        : payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                      {payment.status === "succeeded"
+                        ? "Paid"
+                        : payment.status === "cod_pending_collection" || payment.status === "pending"
+                          ? "Pending Collection"
+                          : payment.status === "cancelled"
+                            ? "Cancelled"
+                            : payment.status === "refunded"
+                              ? "Refunded"
+                              : payment.status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
                     </span>
                   </div>
                 </>
@@ -449,6 +488,79 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               </CardContent>
             </Card>
           )}
+
+          {/* Order Progress — status history with timestamps */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Order Progress</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {statusHistory.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No status history recorded yet.</p>
+              ) : (
+                <ol className="relative space-y-0">
+                  {/* Vertical connector */}
+                  <div className="absolute left-[13px] top-3 bottom-3 w-px bg-border" />
+
+                  {[...statusHistory].reverse().map((entry, idx) => {
+                    const isFirst   = idx === 0; // most recent (reversed)
+                    const toJourney = ORDER_JOURNEY[entry.to_status as OrderStatus];
+                    const isTerminalBad =
+                      entry.to_status === "cancelled" ||
+                      entry.to_status === "failed" ||
+                      entry.to_status === "return_rejected" ||
+                      entry.to_status === "replacement_rejected";
+
+                    const entryDate = new Date(entry.created_at);
+
+                    return (
+                      <li key={entry.id} className="relative flex gap-3 pb-5 last:pb-0">
+                        {/* Step icon */}
+                        <div className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-background ring-1 ring-border">
+                          {isFirst ? (
+                            isTerminalBad ? (
+                              <XCircle className="h-4 w-4 text-destructive" />
+                            ) : (
+                              <Circle className="h-3 w-3 rounded-full bg-primary ring-2 ring-primary/30" />
+                            )
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4 text-primary" />
+                          )}
+                        </div>
+
+                        {/* Content */}
+                        <div className="min-w-0 flex-1 pt-0.5 space-y-0.5">
+                          <p className={`text-sm font-medium leading-tight ${
+                            isTerminalBad && isFirst ? "text-destructive" : "text-foreground"
+                          }`}>
+                            {toJourney?.label ?? entry.to_status.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                          </p>
+
+                          {/* Date + time */}
+                          <p className="text-xs text-muted-foreground">
+                            {entryDate.toLocaleDateString("en-IN", {
+                              day: "numeric", month: "short", year: "numeric",
+                            })}{" "}
+                            at{" "}
+                            {entryDate.toLocaleTimeString("en-IN", {
+                              hour: "2-digit", minute: "2-digit", hour12: true,
+                            })}
+                          </p>
+
+                          {/* Reason/note if present */}
+                          {entry.reason && (
+                            <p className="text-xs text-muted-foreground italic truncate">
+                              {entry.reason}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

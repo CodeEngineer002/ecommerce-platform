@@ -68,6 +68,9 @@ function MiniProgress({ status }: { status: OrderStatus }) {
   const journey = ORDER_JOURNEY[status];
   if (!journey || journey.track === "cancelled") return null;
 
+  const isRejected =
+    status === "return_rejected" || status === "replacement_rejected";
+
   const steps   = TRACK_STEPS[journey.track];
   const current = journey.step;
 
@@ -79,24 +82,41 @@ function MiniProgress({ status }: { status: OrderStatus }) {
   return (
     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
       {slice.map((stepLabel, i) => {
-        const done    = i < rel;
-        const current = i === rel;
+        const done        = i < rel;
+        const isCurrent   = i === rel;
+        const stepReject  = isRejected && isCurrent;
         return (
           <div key={stepLabel} className="flex items-center gap-1.5">
             {i > 0 && (
               <div
-                className={`h-px w-6 ${done || current ? "bg-primary" : "bg-muted-foreground/30"}`}
+                className={`h-px w-6 ${
+                  done || isCurrent
+                    ? stepReject ? "bg-destructive/40" : "bg-primary"
+                    : "bg-muted-foreground/30"
+                }`}
               />
             )}
             <div className="flex items-center gap-1">
               {done ? (
                 <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-              ) : current ? (
+              ) : stepReject ? (
+                <XCircle className="h-3.5 w-3.5 text-destructive" />
+              ) : isCurrent ? (
                 <Circle className="h-3.5 w-3.5 fill-primary text-primary" />
               ) : (
                 <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
               )}
-              <span className={current ? "font-medium text-foreground" : ""}>{stepLabel}</span>
+              <span
+                className={
+                  stepReject
+                    ? "font-medium text-destructive"
+                    : isCurrent
+                      ? "font-medium text-foreground"
+                      : ""
+                }
+              >
+                {stepLabel}
+              </span>
             </div>
           </div>
         );
@@ -109,8 +129,8 @@ function MiniProgress({ status }: { status: OrderStatus }) {
 function TrackIcon({ status }: { status: OrderStatus }) {
   const track = ORDER_JOURNEY[status]?.track;
   const cls   = "h-5 w-5";
-  if (track === "return")      return <RotateCcw      className={cls} />;
-  if (track === "replacement") return <RefreshCcw     className={cls} />;
+  if (track === "return" || track === "return_rejected")             return <RotateCcw      className={cls} />;
+  if (track === "replacement" || track === "replacement_rejected")   return <RefreshCcw     className={cls} />;
   if (track === "refund")      return <RefreshCcw     className={cls} />;
   if (track === "cancelled")   return <XCircle        className={cls} />;
   return                              <Package        className={cls} />;

@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { OrderActions } from "@/components/orders/order-actions";
 import { OrderTimeline } from "@/components/orders/order-timeline";
+import { ReturnCancelButton } from "@/components/orders/return-cancel-button";
 import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,10 +95,10 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
     }
   }
 
-  // Fetch return requests
+  // Fetch return requests (include review_note for rejection reason display)
   const { data: returnsRaw } = await supabase
     .from("order_returns")
-    .select("id, status, reason, request_type, created_at")
+    .select("id, status, reason, request_type, created_at, review_note, reviewed_at")
     .eq("order_id", id)
     .order("created_at", { ascending: false });
 
@@ -107,6 +108,8 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
     reason: string;
     request_type: string;
     created_at: string;
+    review_note: string | null;
+    reviewed_at: string | null;
   };
 
   const typedReturns = (returnsRaw ?? []) as unknown as ReturnRow[];
@@ -146,10 +149,13 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
 
   const canCancel = isOrderCancellable(order.status as Parameters<typeof isOrderCancellable>[0]);
   const canReturn = ["delivered", "partially_returned"].includes(order.status);
+  // Active: anything not yet terminal (requested/approved/pickup_scheduled/in_transit)
   const activeReturn = typedReturns.find((r) =>
     ["requested", "approved", "pickup_scheduled", "in_transit"].includes(r.status),
   );
   const hasActiveReturn = Boolean(activeReturn);
+  // Show original shipment tracking banner only when there is NO active return/replacement
+  const showShipmentTracking = Boolean(typedFulfillment?.tracking_number) && !hasActiveReturn;
 
   return (
     <div className="container py-8">
@@ -189,8 +195,8 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
         </div>
       </div>
 
-      {/* Tracking banner */}
-      {typedFulfillment?.tracking_number && (
+      {/* Tracking banner — hidden when active return/replacement request exists */}
+      {showShipmentTracking && (
         <Card className="mb-6 border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30">
           <CardContent className="py-4">
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -308,13 +314,23 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
               <CardContent className="space-y-5 text-sm">
                 {typedReturns.map((r) => {
                   const isReplacement = r.request_type === "replacement";
-                  const returnJourney = ORDER_JOURNEY[r.status as keyof typeof ORDER_JOURNEY];
                   const pickupShipment = returnShipmentMap.get(r.id);
                   const replacementShipment = replacementShipmentMap.get(r.id);
+                  const isRejected = r.status === "rejected";
+                  const isCancelled = r.status === "cancelled";
 
                   return (
-                    <div key={r.id} className="rounded-lg border p-4 space-y-3">
-                      {/* Header: type badge + reason + status */}
+                    <div
+                      key={r.id}
+                      className={`rounded-lg border p-4 space-y-3 ${
+                        isRejected
+                          ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20"
+                          : isCancelled
+                            ? "border-muted bg-muted/30"
+                            : ""
+                      }`}
+                    >
+                      {/* Header: type badge + status */}
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="space-y-1">
                           <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -333,8 +349,46 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
                         Submitted on {formatDate(r.created_at)}
                       </p>
 
-                      {returnJourney?.hint && (
-                        <p className="text-xs text-muted-foreground">{returnJourney.hint}</p>
+                      {/* Rejection block — shows reason from admin + re-submit hint */}
+                      {isRejected && (
+                        <div className="rounded-md border border-red-200 bg-white px-3 py-2.5 space-y-1 dark:border-red-800 dark:bg-background">
+                          <p className="text-xs font-semibold text-destructive uppercase tracking-wide">
+                            Request Not Approved
+                          </p>
+                          {r.review_note ? (
+                            <p className="text-xs text-foreground">
+                              <span className="font-medium">Reason: </span>{r.review_note}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              No reason provided. Please contact customer support for details.
+                            </p>
+                          )}
+                          {r.reviewed_at && (
+                            <p className="text-xs text-muted-foreground">
+                              Reviewed on {formatDate(r.reviewed_at)}
+                            </p>
+                          )}
+                          <p className="text-xs text-muted-foreground pt-1">
+                            If you believe this is a mistake, you may submit a new request or contact our support team.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Cancelled notice */}
+                      {isCancelled && (
+                        <p className="text-xs text-muted-foreground italic">
+                          This request was cancelled by you.
+                        </p>
+                      )}
+
+                      {/* Cancel button — only when request is still pending review */}
+                      {r.status === "requested" && (
+                        <ReturnCancelButton
+                          orderId={order.id}
+                          requestId={r.id}
+                          requestType={r.request_type}
+                        />
                       )}
 
                       {/* Return pickup tracking */}
@@ -461,15 +515,21 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Payment Status</span>
                     <span
-                      className={`font-medium capitalize ${
+                      className={`font-medium ${
                         order.payment.status === "succeeded"
                           ? "text-green-600"
-                          : order.payment.status === "pending"
-                            ? "text-amber-600"
-                            : "text-destructive"
+                          : order.payment.status === "cancelled" || order.payment.status === "failed"
+                            ? "text-destructive"
+                            : "text-amber-600"
                       }`}
                     >
-                      {order.payment.status === "succeeded" ? "Paid" : order.payment.status}
+                      {order.payment.status === "succeeded"
+                        ? "Paid"
+                        : order.payment.status === "cod_pending_collection" || order.payment.status === "pending"
+                          ? "Cash on Delivery"
+                          : order.payment.status === "refunded"
+                            ? "Refunded"
+                            : order.payment.status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
                     </span>
                   </div>
                 </div>

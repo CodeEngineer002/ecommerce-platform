@@ -9,7 +9,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { useCartStore } from "@/store/cart-store";
 import type { CheckoutPayload } from "@/types";
 
-import { createOrder, deleteOrder, getOrderById, getOrders, createReturnRequest, type ReturnItem } from "../services/order.service";
+import { createOrder, deleteOrder, getOrderById, getOrders, createReturnRequest, cancelReturnRequest, type ReturnItem } from "../services/order.service";
 
 export const orderKeys = queryKeys.orders;
 
@@ -72,6 +72,30 @@ export function useCancelOrder() {
     },
     onError: (error: Error) => {
       toast.error(error.message ?? "Failed to cancel order");
+    },
+  });
+}
+
+export function useCancelReturnRequest() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      orderId,
+      requestId,
+      reason,
+    }: {
+      orderId:   string;
+      requestId: string;
+      reason?:   string;
+    }) => cancelReturnRequest(orderId, requestId, reason),
+    onSuccess: (_data, { orderId }) => {
+      queryClient.invalidateQueries({ queryKey: orderKeys.detail(orderId) });
+      queryClient.invalidateQueries({ queryKey: orderKeys.all });
+      toast.success("Request cancelled successfully");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message ?? "Failed to cancel request");
     },
   });
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Banknote, CheckCircle, Loader2, AlertCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ export function CodCollectionPanel({
   paymentStatus,
   collectedAt,
 }: Props) {
+  const router = useRouter();
   const [notes, setNotes]           = useState("");
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
@@ -71,6 +73,8 @@ export function CodCollectionPanel({
         body: JSON.stringify({ amount_collected: orderTotal, notes: notes || undefined }),
       });
       setCollected(true);
+      // Refresh the server component so Payment status in Order Summary updates
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to confirm COD collection");
     } finally {

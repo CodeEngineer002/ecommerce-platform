@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useMemo } from "react";
-import { useState } from "react";
+import { useRef, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
+import { Pencil, X, ExternalLink } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,12 +99,12 @@ export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, shipme
       ? fulfillment.estimated_delivery.slice(0, 10)
       : addDays(orderCreatedAt, 3),
   );
-  const [saving, setSaving] = useState(false);
+  const [saving,    setSaving]    = useState(false);
+  // When tracking already exists, start in view (read-only) mode
+  const [editing,   setEditing]   = useState(!isUpdate);
 
-  // Track whether URL was manually edited (if so, don't overwrite on auto-fill)
   const urlManuallyEdited = useRef(Boolean(fulfillment?.tracking_url));
 
-  // Auto-fill tracking URL when carrier + tracking number change
   function handleCarrierOrTrackingChange(newCarrier: string, newTracking: string) {
     if (!urlManuallyEdited.current) {
       const auto = buildTrackingUrl(newCarrier, newTracking);
@@ -116,7 +116,6 @@ export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, shipme
     e.preventDefault();
     setSaving(true);
 
-    // Auto-generate tracking URL if not set
     const finalUrl = trackingUrl || buildTrackingUrl(carrier, trackingNumber);
 
     try {
@@ -124,16 +123,17 @@ export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, shipme
         await apiFetch(`/api/admin/orders/${orderId}/fulfillment`, {
           method: "PATCH",
           body: JSON.stringify({
-            fulfillment_id:    fulfillment!.id!,
-            carrier:           carrier       || undefined,
-            tracking_number:   trackingNumber || undefined,
-            tracking_url:      finalUrl       || undefined,
+            fulfillment_id:     fulfillment!.id!,
+            carrier:            carrier       || undefined,
+            tracking_number:    trackingNumber || undefined,
+            tracking_url:       finalUrl       || undefined,
             estimated_delivery: estimatedDelivery
               ? new Date(estimatedDelivery).toISOString()
               : undefined,
           }),
         });
         toast.success("Tracking updated");
+        setEditing(false);
       } else {
         const successMsg =
           shipmentType === "return_pickup"        ? "Return pickup tracking saved" :
@@ -143,9 +143,9 @@ export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, shipme
         await apiFetch(`/api/admin/orders/${orderId}/fulfillment`, {
           method: "POST",
           body: JSON.stringify({
-            carrier:           carrier       || undefined,
-            tracking_number:   trackingNumber || undefined,
-            tracking_url:      finalUrl       || undefined,
+            carrier:            carrier       || undefined,
+            tracking_number:    trackingNumber || undefined,
+            tracking_url:       finalUrl       || undefined,
             estimated_delivery: estimatedDelivery
               ? new Date(estimatedDelivery).toISOString()
               : undefined,
@@ -166,6 +166,72 @@ export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, shipme
 
   const shipmentLabel = SHIPMENT_TYPE_LABELS[shipmentType] ?? "Shipment";
 
+  // ── Read-only view (when tracking exists and not in edit mode) ──────────────
+  if (isUpdate && !editing) {
+    return (
+      <div className="space-y-3">
+        {shipmentType !== "outbound_original" && (
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {shipmentLabel} tracking
+          </p>
+        )}
+
+        <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-2 text-sm">
+          <div className="flex items-start justify-between gap-2">
+            <div className="space-y-1.5 min-w-0">
+              {carrier && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-28 shrink-0">Carrier</span>
+                  <span className="font-medium">{carrier}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-28 shrink-0">Tracking No.</span>
+                <span className="font-mono text-xs truncate">{trackingNumber}</span>
+              </div>
+              {trackingUrl && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-28 shrink-0">Tracking URL</span>
+                  <a
+                    href={trackingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary hover:underline flex items-center gap-1 truncate"
+                  >
+                    Open <ExternalLink className="h-3 w-3 shrink-0" />
+                  </a>
+                </div>
+              )}
+              {estimatedDelivery && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-28 shrink-0">Est. delivery</span>
+                  <span>
+                    {new Date(estimatedDelivery).toLocaleDateString("en-IN", {
+                      day: "numeric", month: "short", year: "numeric",
+                    })}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Edit button */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+              onClick={() => setEditing(true)}
+              title="Edit tracking"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Edit / create form ──────────────────────────────────────────────────────
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {shipmentType !== "outbound_original" && (
@@ -173,6 +239,7 @@ export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, shipme
           {shipmentLabel} tracking
         </p>
       )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="carrier">Carrier</Label>
@@ -199,7 +266,7 @@ export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, shipme
             placeholder="e.g. 1234567890"
             value={trackingNumber}
             readOnly={!isUpdate}
-            className={!isUpdate ? "bg-muted text-muted-foreground cursor-default" : ""}
+            className={!isUpdate ? "bg-muted text-muted-foreground cursor-default select-all" : ""}
             onChange={(e) => {
               if (isUpdate) {
                 setTrackingNumber(e.target.value);
@@ -237,7 +304,19 @@ export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, shipme
         </div>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        {/* Cancel only available when editing an existing record */}
+        {isUpdate && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setEditing(false)}
+            className="gap-1.5"
+          >
+            <X className="h-3.5 w-3.5" /> Cancel
+          </Button>
+        )}
         <Button type="submit" disabled={saving}>
           {saving ? "Saving…" : isUpdate ? "Update Tracking" : "Save Tracking"}
         </Button>

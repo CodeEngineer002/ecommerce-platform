@@ -44,12 +44,14 @@ const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   failed:                ["pending_payment"],
   return_requested:      ["return_approved", "return_rejected"],
   return_approved:       ["return_in_transit"],
-  return_rejected:       [],
+  // After rejection the DB automatically reverts order to 'delivered' so the
+  // customer can re-submit.  Keep delivered here for any manual admin correction.
+  return_rejected:       ["delivered"],
   return_in_transit:     ["returned"],
   returned:              ["refunded", "replacement_shipped"],
   replacement_requested: ["replacement_approved", "replacement_rejected"],
   replacement_approved:  ["replacement_shipped"],
-  replacement_rejected:  [],
+  replacement_rejected:  ["delivered"],
   replacement_shipped:   ["replacement_delivered"],
   replacement_delivered: [],
   refund_requested:      ["refund_processing"],
@@ -101,6 +103,7 @@ export type ReturnStatus =
   | "requested"
   | "approved"
   | "rejected"
+  | "cancelled"
   | "pickup_scheduled"
   | "in_transit"
   | "received"
@@ -112,9 +115,10 @@ export type ReturnStatus =
   | "closed";
 
 const RETURN_TRANSITIONS: Record<ReturnStatus, readonly ReturnStatus[]> = {
-  requested:                 ["approved", "rejected"],
+  requested:                 ["approved", "rejected", "cancelled"],
   approved:                  ["pickup_scheduled", "in_transit"],
   rejected:                  [],
+  cancelled:                 [],
   pickup_scheduled:          ["in_transit"],
   in_transit:                ["received"],
   received:                  ["inspected"],

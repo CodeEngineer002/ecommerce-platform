@@ -10,7 +10,14 @@
 
 import type { OrderStatus } from "@/domain/order/order-state-machine";
 
-export type OrderTrack = "active" | "cancelled" | "return" | "replacement" | "refund";
+export type OrderTrack =
+  | "active"
+  | "cancelled"
+  | "return"
+  | "return_rejected"
+  | "replacement"
+  | "replacement_rejected"
+  | "refund";
 
 export interface OrderJourneyConfig {
   label:      string;
@@ -44,12 +51,24 @@ export const RETURN_STEPS = [
   "Refunded / Replaced",
 ] as const;
 
+// ── Return rejected track (dedicated, so timeline shows correctly) ─────────────
+export const RETURN_REJECTED_STEPS = [
+  "Return Requested",
+  "Request Rejected",
+] as const;
+
 // ── Replacement track ─────────────────────────────────────────────────────────
 export const REPLACEMENT_STEPS = [
   "Replacement Requested",
   "Approved",
   "Shipped",
   "Delivered",
+] as const;
+
+// ── Replacement rejected track ─────────────────────────────────────────────────
+export const REPLACEMENT_REJECTED_STEPS = [
+  "Replacement Requested",
+  "Request Rejected",
 ] as const;
 
 // ── Per-status config ─────────────────────────────────────────────────────────
@@ -70,19 +89,22 @@ export const ORDER_JOURNEY: Record<OrderStatus, OrderJourneyConfig> = {
   failed:                { label: "Payment Failed",      color: "red",    track: "cancelled",   step: 0, isTerminal: true,  hint: "Payment could not be processed." },
 
   // Return track
-  return_requested:      { label: "Return Requested",    color: "yellow", track: "return",      step: 0, isTerminal: false, hint: "We are reviewing your return request." },
-  return_approved:       { label: "Return Approved",     color: "blue",   track: "return",      step: 1, isTerminal: false, hint: "Schedule pickup or drop off the package." },
-  return_rejected:       { label: "Return Rejected",     color: "red",    track: "return",      step: 1, isTerminal: true,  hint: "Your return request was not approved." },
-  return_in_transit:     { label: "Return In Transit",   color: "purple", track: "return",      step: 3, isTerminal: false, hint: "Package is on its way back to our warehouse." },
-  returned:              { label: "Returned",            color: "gray",   track: "return",      step: 4, isTerminal: false, hint: "We've received your package. Inspecting now." },
-  partially_returned:    { label: "Partially Returned",  color: "orange", track: "return",      step: 4, isTerminal: false, hint: "Some items returned. Refund in progress." },
+  return_requested:      { label: "Return Requested",    color: "yellow", track: "return",             step: 0, isTerminal: false, hint: "We are reviewing your return request." },
+  return_approved:       { label: "Return Approved",     color: "blue",   track: "return",             step: 1, isTerminal: false, hint: "Schedule pickup or drop off the package." },
+  // return_rejected uses its own 2-step track so the timeline reads "Requested → Rejected"
+  // After rejection the DB reverts the order to 'delivered' automatically.
+  return_rejected:       { label: "Return Rejected",     color: "red",    track: "return_rejected",    step: 1, isTerminal: true,  hint: "Your return request was not approved. You may submit a new request if eligible." },
+  return_in_transit:     { label: "Return In Transit",   color: "purple", track: "return",             step: 3, isTerminal: false, hint: "Package is on its way back to our warehouse." },
+  returned:              { label: "Returned",            color: "gray",   track: "return",             step: 4, isTerminal: false, hint: "We've received your package. Inspecting now." },
+  partially_returned:    { label: "Partially Returned",  color: "orange", track: "return",             step: 4, isTerminal: false, hint: "Some items returned. Refund in progress." },
 
   // Replacement track
-  replacement_requested: { label: "Replacement Requested", color: "yellow", track: "replacement", step: 0, isTerminal: false, hint: "We are reviewing your replacement request." },
-  replacement_approved:  { label: "Replacement Approved",  color: "blue",   track: "replacement", step: 1, isTerminal: false, hint: "Replacement is being prepared for dispatch." },
-  replacement_rejected:  { label: "Replacement Rejected",  color: "red",    track: "replacement", step: 1, isTerminal: true,  hint: "Replacement request was not approved." },
-  replacement_shipped:   { label: "Replacement Shipped",   color: "purple", track: "replacement", step: 2, isTerminal: false, hint: "Your replacement is on its way." },
-  replacement_delivered: { label: "Replacement Delivered", color: "green",  track: "replacement", step: 3, isTerminal: true,  hint: "Replacement delivered successfully." },
+  replacement_requested: { label: "Replacement Requested", color: "yellow", track: "replacement",          step: 0, isTerminal: false, hint: "We are reviewing your replacement request." },
+  replacement_approved:  { label: "Replacement Approved",  color: "blue",   track: "replacement",          step: 1, isTerminal: false, hint: "Replacement is being prepared for dispatch." },
+  // replacement_rejected also uses its own 2-step track
+  replacement_rejected:  { label: "Replacement Rejected",  color: "red",    track: "replacement_rejected", step: 1, isTerminal: true,  hint: "Replacement request was not approved. You may submit a new request if eligible." },
+  replacement_shipped:   { label: "Replacement Shipped",   color: "purple", track: "replacement",          step: 2, isTerminal: false, hint: "Your replacement is on its way." },
+  replacement_delivered: { label: "Replacement Delivered", color: "green",  track: "replacement",          step: 3, isTerminal: true,  hint: "Replacement delivered successfully." },
 
   // Refund track
   refund_requested:      { label: "Refund Requested",    color: "yellow", track: "refund",      step: 0, isTerminal: false, hint: "Refund request is under review." },
@@ -93,11 +115,13 @@ export const ORDER_JOURNEY: Record<OrderStatus, OrderJourneyConfig> = {
 
 // ── Track step labels ─────────────────────────────────────────────────────────
 export const TRACK_STEPS: Record<OrderTrack, readonly string[]> = {
-  active:      ACTIVE_ORDER_STEPS,
-  cancelled:   ["Cancelled"],
-  return:      RETURN_STEPS,
-  replacement: REPLACEMENT_STEPS,
-  refund:      ["Requested", "Processing", "Refunded"],
+  active:               ACTIVE_ORDER_STEPS,
+  cancelled:            ["Cancelled"],
+  return:               RETURN_STEPS,
+  return_rejected:      RETURN_REJECTED_STEPS,
+  replacement:          REPLACEMENT_STEPS,
+  replacement_rejected: REPLACEMENT_REJECTED_STEPS,
+  refund:               ["Requested", "Processing", "Refunded"],
 };
 
 // ── Tab groupings ─────────────────────────────────────────────────────────────
@@ -106,7 +130,12 @@ export type OrderTab = "all" | "active" | "delivered" | "cancelled" | "returns" 
 export function getOrderTab(status: OrderStatus): OrderTab {
   const track = ORDER_JOURNEY[status]?.track ?? "active";
   if (track === "cancelled") return "cancelled";
-  if (track === "return" || track === "replacement") return "returns";
+  if (
+    track === "return" ||
+    track === "return_rejected" ||
+    track === "replacement" ||
+    track === "replacement_rejected"
+  ) return "returns";
   if (track === "refund") return "refunds";
   if (status === "delivered") return "delivered";
   return "active";

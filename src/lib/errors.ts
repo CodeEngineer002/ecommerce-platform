@@ -140,6 +140,12 @@ export class ReturnNotEligibleError extends AppError {
   }
 }
 
+export class ReturnCancelNotAllowedError extends AppError {
+  constructor(reason: string) {
+    super(reason, "RETURN_CANCEL_NOT_ALLOWED", 409);
+  }
+}
+
 export class RefundNotAllowedError extends AppError {
   constructor(reason: string) {
     super(reason, "REFUND_NOT_ALLOWED", 422);

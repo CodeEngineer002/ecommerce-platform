@@ -34,7 +34,6 @@ export const GET = withApiHandler(
       .order("created_at", { ascending: false });
 
     if (statusFilter && statusFilter !== "all") {
-      // "closed" maps to multiple terminal statuses
       if (statusFilter === "closed") {
         query = query.in("status", ["refunded", "replaced", "closed", "rejected_after_inspection", "accepted"]);
       } else {

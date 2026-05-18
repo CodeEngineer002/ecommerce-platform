@@ -15,7 +15,7 @@ import { apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { useAdminReturns } from "@/features/admin/hooks/use-admin-returns";
 
-type StatusFilter = "all" | "requested" | "approved" | "rejected" | "closed";
+type StatusFilter = "all" | "requested" | "approved" | "rejected" | "cancelled" | "closed";
 
 export default function AdminReturnsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("requested");
@@ -39,6 +39,7 @@ export default function AdminReturnsPage() {
             <SelectItem value="requested">Pending review</SelectItem>
             <SelectItem value="approved">Approved</SelectItem>
             <SelectItem value="rejected">Rejected</SelectItem>
+            <SelectItem value="cancelled">Cancelled by customer</SelectItem>
             <SelectItem value="closed">Closed</SelectItem>
           </SelectContent>
         </Select>
@@ -191,7 +192,19 @@ function ReturnCard({ request: r, onUpdate }: { request: ReturnRequest; onUpdate
           </div>
         )}
 
-        {/* Admin actions */}
+        {/* Cancelled by customer — display notice, no actions */}
+        {r.status === "cancelled" && (
+          <div className="rounded-md bg-muted/50 p-3">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+              Cancelled by customer
+            </p>
+            <p className="text-xs text-muted-foreground">
+              The customer cancelled this request before any action was taken. No further action is needed.
+            </p>
+          </div>
+        )}
+
+        {/* Admin actions — only for pending review */}
         {isPendingReview && (
           <div className="space-y-3 border-t pt-4">
             <div>

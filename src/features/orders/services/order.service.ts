@@ -106,6 +106,17 @@ export async function getReturnRequests(orderId: string) {
   return data;
 }
 
+export async function cancelReturnRequest(
+  orderId:   string,
+  requestId: string,
+  reason?:   string,
+): Promise<void> {
+  await apiFetch(`/api/orders/${orderId}/returns/${requestId}`, {
+    method: "DELETE",
+    body:   JSON.stringify({ reason }),
+  });
+}
+
 export async function getOrderFulfillment(orderId: string) {
   const supabase = createClient();
   const { data } = await supabase
