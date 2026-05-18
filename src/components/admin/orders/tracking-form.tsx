@@ -18,10 +18,27 @@ export interface FulfillmentData {
   status:             string | null;
 }
 
+type ShipmentType =
+  | "outbound_original"
+  | "return_pickup"
+  | "replacement_outbound"
+  | "exchange_pickup"
+  | "return_to_origin";
+
+const SHIPMENT_TYPE_LABELS: Record<ShipmentType, string> = {
+  outbound_original:    "Original Shipment",
+  return_pickup:        "Return Pickup",
+  replacement_outbound: "Replacement Shipment",
+  exchange_pickup:      "Exchange Pickup",
+  return_to_origin:     "Return to Origin",
+};
+
 interface Props {
   orderId:          string;
   orderCreatedAt:   string;   // ISO string — used to default estimated delivery
   fulfillment:      FulfillmentData | null;
+  shipmentType?:    ShipmentType;   // for new fulfillments only
+  requestId?:       string;         // link to order_return.id for return/replacement shipments
   onSaved?:         () => void;
 }
 
@@ -64,7 +81,7 @@ function buildTrackingUrl(carrier: string, trackingNumber: string): string {
   return `https://www.google.com/search?q=track+${encodeURIComponent(carrier)}+${t}`;
 }
 
-export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, onSaved }: Props) {
+export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, shipmentType = "outbound_original", requestId, onSaved }: Props) {
   const isUpdate = Boolean(fulfillment?.id);
 
   // Auto-generate tracking number once when no tracking exists yet
@@ -118,6 +135,11 @@ export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, onSave
         });
         toast.success("Tracking updated");
       } else {
+        const successMsg =
+          shipmentType === "return_pickup"        ? "Return pickup tracking saved" :
+          shipmentType === "replacement_outbound" ? "Replacement shipment tracking saved" :
+          "Tracking saved — order marked as shipped";
+
         await apiFetch(`/api/admin/orders/${orderId}/fulfillment`, {
           method: "POST",
           body: JSON.stringify({
@@ -127,9 +149,11 @@ export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, onSave
             estimated_delivery: estimatedDelivery
               ? new Date(estimatedDelivery).toISOString()
               : undefined,
+            shipment_type: shipmentType,
+            request_id:    requestId || undefined,
           }),
         });
-        toast.success("Tracking saved — order marked as shipped");
+        toast.success(successMsg);
       }
       if (finalUrl && finalUrl !== trackingUrl) setTrackingUrl(finalUrl);
       onSaved?.();
@@ -140,8 +164,15 @@ export function AdminTrackingForm({ orderId, orderCreatedAt, fulfillment, onSave
     }
   }
 
+  const shipmentLabel = SHIPMENT_TYPE_LABELS[shipmentType] ?? "Shipment";
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {shipmentType !== "outbound_original" && (
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {shipmentLabel} tracking
+        </p>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="carrier">Carrier</Label>

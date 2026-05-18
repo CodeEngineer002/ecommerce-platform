@@ -89,13 +89,14 @@ export interface ReturnItem {
 }
 
 export async function createReturnRequest(
-  orderId: string,
-  reason:  string,
-  items:   ReturnItem[],
+  orderId:      string,
+  requestType:  "return" | "replacement",
+  reason:       string,
+  items:        ReturnItem[],
 ): Promise<string> {
   const { data } = await apiFetch<{ returnId: string }>(`/api/orders/${orderId}/returns`, {
     method: "POST",
-    body:   JSON.stringify({ reason, items }),
+    body:   JSON.stringify({ request_type: requestType, reason, items }),
   });
   return data.returnId;
 }

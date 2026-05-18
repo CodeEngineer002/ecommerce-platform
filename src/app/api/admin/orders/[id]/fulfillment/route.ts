@@ -11,6 +11,14 @@ const createFulfillmentSchema = z.object({
   tracking_url:        z.string().url().max(500).optional(),
   estimated_delivery:  z.string().datetime().optional(),
   notes:               z.string().max(500).optional(),
+  shipment_type:       z.enum([
+    "outbound_original",
+    "return_pickup",
+    "replacement_outbound",
+    "exchange_pickup",
+    "return_to_origin",
+  ]).optional(),
+  request_id:          z.string().uuid().optional(),
 });
 
 const updateFulfillmentSchema = z.object({
@@ -41,7 +49,7 @@ export const POST = withApiHandler(
       );
     }
 
-    const { carrier, tracking_number, tracking_url, estimated_delivery, notes } = parsed.data;
+    const { carrier, tracking_number, tracking_url, estimated_delivery, notes, shipment_type, request_id } = parsed.data;
 
     const { data: fulfillmentId, error } = await db.rpc("create_fulfillment", {
       p_order_id:           orderId,
@@ -51,6 +59,8 @@ export const POST = withApiHandler(
       p_tracking_url:       tracking_url ?? undefined,
       p_estimated_delivery: estimated_delivery ?? undefined,
       p_notes:              notes ?? undefined,
+      p_shipment_type:      shipment_type ?? "outbound_original",
+      p_request_id:         request_id ?? undefined,
     });
 
     if (error) {

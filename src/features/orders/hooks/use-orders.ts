@@ -82,13 +82,15 @@ export function useRequestReturn() {
   return useMutation({
     mutationFn: ({
       orderId,
+      requestType,
       reason,
       items,
     }: {
-      orderId: string;
-      reason:  string;
-      items:   ReturnItem[];
-    }) => createReturnRequest(orderId, reason, items),
+      orderId:      string;
+      requestType:  "return" | "replacement";
+      reason:       string;
+      items:        ReturnItem[];
+    }) => createReturnRequest(orderId, requestType, reason, items),
     onSuccess: (_data, { orderId }) => {
       queryClient.invalidateQueries({ queryKey: orderKeys.detail(orderId) });
       toast.success("Return request submitted successfully");

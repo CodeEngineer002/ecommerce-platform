@@ -1,11 +1,13 @@
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, PackageX, RefreshCw, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CodCollectionPanel } from "@/components/admin/orders/cod-collection-panel";
 import { AdminTrackingForm } from "@/components/admin/orders/tracking-form";
 import type { FulfillmentData } from "@/components/admin/orders/tracking-form";
+import { AdminReturnActions } from "@/components/admin/orders/return-actions";
 import { StatusBadge } from "@/components/common/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -34,15 +36,13 @@ export default async function AdminOrderDetailPage({ params }: Props) {
 
   if (!order) notFound();
 
-  // Fetch latest fulfillment and payment in parallel
-  const [{ data: fulfillmentRaw }, { data: paymentRaw }] = await Promise.all([
+  // Fetch fulfillments, payment, and return requests in parallel
+  const [{ data: allFulfillmentsRaw }, { data: paymentRaw }, { data: returnsRaw }] = await Promise.all([
     db
       .from("order_fulfillments")
-      .select("id, carrier, tracking_number, tracking_url, estimated_delivery, status")
+      .select("id, carrier, tracking_number, tracking_url, estimated_delivery, status, shipment_type, request_id")
       .eq("order_id", orderId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+      .order("created_at", { ascending: true }),
     db
       .from("payments")
       .select("id, provider, status, amount, metadata, created_at")
@@ -50,10 +50,52 @@ export default async function AdminOrderDetailPage({ params }: Props) {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    db
+      .from("order_returns")
+      .select(`
+        id, order_id, request_type, reason, status, created_at, reviewed_at, review_note,
+        items:order_return_items(id, order_item_id, quantity, reason, condition,
+          order_item:order_items(product_name, variant_name))
+      `)
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: false }),
   ]);
 
-  type FulfillmentRow = FulfillmentData;
-  const fulfillment = (fulfillmentRaw as unknown as FulfillmentRow | null);
+  type AllFulfillmentRow = FulfillmentData & { shipment_type: string; request_id: string | null };
+  const allFulfillments = (allFulfillmentsRaw ?? []) as unknown as AllFulfillmentRow[];
+
+  // Original outbound fulfillment for the tracking form
+  const fulfillment = (
+    allFulfillments.find((f) => f.shipment_type === "outbound_original" || !f.shipment_type)
+    ?? allFulfillments[0]
+    ?? null
+  ) as FulfillmentData | null;
+
+  // Separate return/replacement shipments keyed by request_id
+  const returnShipmentMap = new Map<string, AllFulfillmentRow>();
+  const replacementShipmentMap = new Map<string, AllFulfillmentRow>();
+  for (const f of allFulfillments) {
+    if (f.request_id) {
+      if (f.shipment_type === "return_pickup" || f.shipment_type === "exchange_pickup") {
+        returnShipmentMap.set(f.request_id, f);
+      } else if (f.shipment_type === "replacement_outbound") {
+        replacementShipmentMap.set(f.request_id, f);
+      }
+    }
+  }
+
+  type ReturnItemRow = {
+    id: string; order_item_id: string; quantity: number;
+    reason: string | null; condition: string | null;
+    order_item: { product_name: string; variant_name: string | null } | null;
+  };
+  type ReturnRow = {
+    id: string; order_id: string; request_type: string; reason: string;
+    status: string; created_at: string; reviewed_at: string | null; review_note: string | null;
+    items: ReturnItemRow[];
+  };
+
+  const typedReturns = (returnsRaw ?? []) as unknown as ReturnRow[];
 
   const payment = paymentRaw as {
     id: string;
@@ -199,6 +241,130 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               </ul>
             </CardContent>
           </Card>
+
+          {/* ── Return / Replacement Requests ───────────────────────────── */}
+          {typedReturns.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Return / Replacement Requests</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6 text-sm">
+                {typedReturns.map((r) => {
+                  const isReplacement = r.request_type === "replacement";
+                  const pickupShipment = returnShipmentMap.get(r.id);
+                  const replacementShipment = replacementShipmentMap.get(r.id);
+
+                  return (
+                    <div key={r.id} className="space-y-4 rounded-lg border p-4">
+                      {/* Header */}
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="space-y-1">
+                          <Badge
+                            variant="outline"
+                            className={isReplacement
+                              ? "border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-300"
+                              : "border-orange-300 text-orange-700 dark:border-orange-700 dark:text-orange-300"
+                            }
+                          >
+                            {isReplacement
+                              ? <><RefreshCw className="mr-1 h-3 w-3" /> Replacement Request</>
+                              : <><Undo2 className="mr-1 h-3 w-3" /> Return Request</>
+                            }
+                          </Badge>
+                          <p className="capitalize font-medium">{r.reason}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Submitted {formatDate(r.created_at)}
+                          </p>
+                        </div>
+                        <StatusBadge status={r.status} />
+                      </div>
+
+                      {/* Items */}
+                      {r.items.length > 0 && (
+                        <ul className="space-y-1">
+                          {r.items.map((item) => (
+                            <li key={item.id} className="flex items-center justify-between rounded border px-3 py-2 text-xs">
+                              <div>
+                                <p className="font-medium">{item.order_item?.product_name ?? "Item"}</p>
+                                {item.order_item?.variant_name && (
+                                  <p className="text-muted-foreground">{item.order_item.variant_name}</p>
+                                )}
+                                {item.condition && (
+                                  <p className="text-muted-foreground capitalize">Condition: {item.condition}</p>
+                                )}
+                              </div>
+                              <span className="text-muted-foreground">Qty: {item.quantity}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {/* Review note */}
+                      {r.review_note && (
+                        <div className="rounded-md bg-muted/50 p-3">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                            {r.status === "rejected" ? "Rejection reason" : "Admin note"}
+                          </p>
+                          <p>{r.review_note}</p>
+                        </div>
+                      )}
+
+                      {/* Return pickup tracking */}
+                      {pickupShipment?.tracking_number && (
+                        <div className="rounded-md bg-muted/50 p-3 space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Return Pickup Tracking
+                          </p>
+                          <p className="font-mono text-xs">{pickupShipment.tracking_number}</p>
+                          {pickupShipment.carrier && (
+                            <p className="text-xs text-muted-foreground">via {pickupShipment.carrier}</p>
+                          )}
+                          {pickupShipment.tracking_url && (
+                            <a
+                              href={pickupShipment.tracking_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              View tracking <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Replacement outbound tracking */}
+                      {isReplacement && replacementShipment?.tracking_number && (
+                        <div className="rounded-md bg-muted/50 p-3 space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Replacement Shipment Tracking
+                          </p>
+                          <p className="font-mono text-xs">{replacementShipment.tracking_number}</p>
+                          {replacementShipment.carrier && (
+                            <p className="text-xs text-muted-foreground">via {replacementShipment.carrier}</p>
+                          )}
+                          {replacementShipment.tracking_url && (
+                            <a
+                              href={replacementShipment.tracking_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              View tracking <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Approve / reject actions (client component) */}
+                      {r.status === "requested" && (
+                        <AdminReturnActions returnId={r.id} requestType={r.request_type} />
+                      )}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* ── Right column ────────────────────────────────────────────── */}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PackageX } from "lucide-react";
+import { PackageX, RefreshCw, Undo2 } from "lucide-react";
 
 import { useRequestReturn } from "@/features/orders/hooks/use-orders";
 import type { ReturnItem } from "@/features/orders/services/order.service";
@@ -44,15 +44,15 @@ export function ReturnForm({ orderId, orderItems }: Props) {
   const router = useRouter();
   const { mutateAsync: requestReturn, isPending } = useRequestReturn();
 
-  const [reason,     setReason]     = useState("");
-  const [customNote, setCustomNote] = useState("");
-  // qty[itemId] = number of units selected for return
-  const [returnQtys, setReturnQtys] = useState<Record<string, number>>({});
-  // condition[itemId] = selected condition
-  const [conditions, setConditions] = useState<Record<string, string>>({});
+  const [requestType, setRequestType] = useState<"return" | "replacement" | null>(null);
+  const [reason,      setReason]      = useState("");
+  const [customNote,  setCustomNote]  = useState("");
+  const [returnQtys,  setReturnQtys]  = useState<Record<string, number>>({});
+  const [conditions,  setConditions]  = useState<Record<string, string>>({});
 
   const selectedItems = Object.entries(returnQtys).filter(([, qty]) => qty > 0);
   const isValid =
+    requestType !== null &&
     reason.trim() !== "" &&
     selectedItems.length > 0;
 
@@ -72,7 +72,7 @@ export function ReturnForm({ orderId, orderItems }: Props) {
       : reason;
 
     try {
-      await requestReturn({ orderId, reason: fullReason, items });
+      await requestReturn({ orderId, requestType: requestType!, reason: fullReason, items });
       router.push(ROUTES.order(orderId));
       router.refresh();
     } catch {
@@ -82,10 +82,56 @@ export function ReturnForm({ orderId, orderItems }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Item selection */}
+      {/* ── Step 1: Request type ─────────────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Select items to return</CardTitle>
+          <CardTitle className="text-base">What would you like to do?</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setRequestType("return")}
+            className={`flex flex-col items-start gap-2 rounded-lg border p-4 text-left transition-colors ${
+              requestType === "return"
+                ? "border-primary bg-primary/5"
+                : "hover:border-muted-foreground/40"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Undo2 className={`h-5 w-5 ${requestType === "return" ? "text-primary" : "text-muted-foreground"}`} />
+              <span className="font-medium">Return</span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Send the item back and receive a refund for your order.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setRequestType("replacement")}
+            className={`flex flex-col items-start gap-2 rounded-lg border p-4 text-left transition-colors ${
+              requestType === "replacement"
+                ? "border-primary bg-primary/5"
+                : "hover:border-muted-foreground/40"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <RefreshCw className={`h-5 w-5 ${requestType === "replacement" ? "text-primary" : "text-muted-foreground"}`} />
+              <span className="font-medium">Replacement</span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Send the item back and receive the same item as a new replacement.
+            </p>
+          </button>
+        </CardContent>
+      </Card>
+
+      {/* ── Step 2: Item selection ───────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Select items to {requestType === "replacement" ? "send back" : "return"}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {orderItems.map((item) => {
@@ -164,10 +210,12 @@ export function ReturnForm({ orderId, orderItems }: Props) {
         </CardContent>
       </Card>
 
-      {/* Return reason */}
+      {/* Reason */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Reason for return</CardTitle>
+          <CardTitle className="text-base">
+            Reason for {requestType === "replacement" ? "replacement" : "return"}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -221,8 +269,16 @@ export function ReturnForm({ orderId, orderItems }: Props) {
           disabled={!isValid || isPending}
           className="gap-2"
         >
-          <PackageX className="h-4 w-4" />
-          {isPending ? "Submitting…" : "Submit Return Request"}
+          {requestType === "replacement"
+            ? <RefreshCw className="h-4 w-4" />
+            : <PackageX className="h-4 w-4" />
+          }
+          {isPending
+            ? "Submitting…"
+            : requestType === "replacement"
+              ? "Submit Replacement Request"
+              : "Submit Return Request"
+          }
         </Button>
       </div>
     </form>

@@ -12,8 +12,9 @@ const returnItemSchema = z.object({
 });
 
 const createReturnSchema = z.object({
-  reason: z.string().min(5).max(500),
-  items:  z.array(returnItemSchema).min(1).max(20),
+  request_type: z.enum(["return", "replacement"]),
+  reason:       z.string().min(5).max(500),
+  items:        z.array(returnItemSchema).min(1).max(20),
 });
 
 // GET /api/orders/[id]/returns  — list return requests for this order
@@ -71,7 +72,7 @@ export const POST = withApiHandler(
         parsed.error.flatten().fieldErrors as Record<string, string[]>,
       );
     }
-    const { reason, items } = parsed.data;
+    const { request_type, reason, items } = parsed.data;
 
     const db = createServiceClient();
 
@@ -91,10 +92,11 @@ export const POST = withApiHandler(
     }
 
     const { data: returnId, error } = await db.rpc("request_return", {
-      p_order_id: orderId,
-      p_user_id:  user.id,
-      p_reason:   reason,
-      p_items:    items as unknown as string, // jsonb — Supabase client serialises array to JSON automatically
+      p_order_id:     orderId,
+      p_user_id:      user.id,
+      p_reason:       reason,
+      p_items:        items as unknown as string, // jsonb — Supabase client serialises array to JSON automatically
+      p_request_type: request_type,
     });
 
     if (error) {

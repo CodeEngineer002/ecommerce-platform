@@ -87,6 +87,7 @@ export const ROUTES = {
     categories:       "/admin/categories",
     orders:           "/admin/orders",
     orderExceptions:  "/admin/orders/exceptions",
+    returns:          "/admin/returns",
     customers:        "/admin/customers",
     analytics:        "/admin/analytics",
     inventory:        "/admin/inventory",

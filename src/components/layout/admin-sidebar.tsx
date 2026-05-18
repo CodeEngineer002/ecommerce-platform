@@ -10,6 +10,7 @@ import {
   Megaphone,
   Menu,
   Package,
+  PackageX,
   ShoppingBag,
   Tag,
   Users,
@@ -64,9 +65,10 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Commerce",
     permission: PERMISSIONS.ORDERS_READ,
     items: [
-      { href: ROUTES.admin.orders,           label: "Orders",     icon: ShoppingBag },
-      { href: ROUTES.admin.orderExceptions,    label: "Exceptions", icon: AlertTriangle, permission: PERMISSIONS.ORDERS_MANAGE },
-      { href: ROUTES.admin.customers, label: "Customers",  icon: Users, permission: PERMISSIONS.CUSTOMERS_READ },
+      { href: ROUTES.admin.orders,         label: "Orders",     icon: ShoppingBag },
+      { href: ROUTES.admin.returns,        label: "Returns",    icon: PackageX, permission: PERMISSIONS.ORDERS_MANAGE },
+      { href: ROUTES.admin.orderExceptions, label: "Exceptions", icon: AlertTriangle, permission: PERMISSIONS.ORDERS_MANAGE },
+      { href: ROUTES.admin.customers,      label: "Customers",  icon: Users, permission: PERMISSIONS.CUSTOMERS_READ },
     ],
   },
   {

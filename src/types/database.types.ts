@@ -2685,6 +2685,8 @@ export type Database = {
           notes: string | null
           order_id: string
           packed_at: string | null
+          request_id: string | null
+          shipment_type: string
           shipped_at: string | null
           status: string
           tracking_number: string | null
@@ -2701,6 +2703,8 @@ export type Database = {
           notes?: string | null
           order_id: string
           packed_at?: string | null
+          request_id?: string | null
+          shipment_type?: string
           shipped_at?: string | null
           status?: string
           tracking_number?: string | null
@@ -2717,6 +2721,8 @@ export type Database = {
           notes?: string | null
           order_id?: string
           packed_at?: string | null
+          request_id?: string | null
+          shipment_type?: string
           shipped_at?: string | null
           status?: string
           tracking_number?: string | null
@@ -2845,6 +2851,7 @@ export type Database = {
           notes: string | null
           order_id: string
           reason: string
+          request_type: string
           review_note: string | null
           reviewed_at: string | null
           reviewed_by: string | null
@@ -2859,6 +2866,7 @@ export type Database = {
           notes?: string | null
           order_id: string
           reason: string
+          request_type?: string
           review_note?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -2873,6 +2881,7 @@ export type Database = {
           notes?: string | null
           order_id?: string
           reason?: string
+          request_type?: string
           review_note?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null

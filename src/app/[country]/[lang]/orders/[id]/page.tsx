@@ -57,32 +57,59 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
 
   const shipping = order.shipping_address as Record<string, string>;
 
-  // Fetch tracking info
-  const { data: fulfillmentRaw } = await supabase
+  // Fetch all fulfillments for this order (separated by shipment_type)
+  const { data: allFulfillments } = await supabase
     .from("order_fulfillments")
-    .select("carrier, tracking_number, tracking_url, estimated_delivery")
+    .select("id, carrier, tracking_number, tracking_url, estimated_delivery, shipment_type, request_id")
     .eq("order_id", id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: true });
 
-  // Fetch return requests
-  const { data: returnsRaw } = await supabase
-    .from("order_returns")
-    .select("id, status, reason, created_at")
-    .eq("order_id", id)
-    .order("created_at", { ascending: false });
-
-  type ReturnRow = { id: string; status: string; reason: string; created_at: string };
   type FulfillmentRow = {
+    id: string;
     carrier: string | null;
     tracking_number: string | null;
     tracking_url: string | null;
     estimated_delivery: string | null;
+    shipment_type: string;
+    request_id: string | null;
   };
 
-  const typedReturns     = (returnsRaw ?? []) as unknown as ReturnRow[];
-  const typedFulfillment = fulfillmentRaw as unknown as FulfillmentRow | null;
+  const allFulfillmentRows = (allFulfillments ?? []) as unknown as FulfillmentRow[];
+
+  // Original outbound shipment (first outbound_original row)
+  const typedFulfillment = allFulfillmentRows.find(
+    (f) => f.shipment_type === "outbound_original" || !f.shipment_type,
+  ) ?? (allFulfillmentRows[0] ?? null);
+
+  // Return/replacement shipments keyed by request_id
+  const returnShipmentMap = new Map<string, FulfillmentRow>();
+  const replacementShipmentMap = new Map<string, FulfillmentRow>();
+  for (const f of allFulfillmentRows) {
+    if (f.request_id) {
+      if (f.shipment_type === "return_pickup" || f.shipment_type === "exchange_pickup") {
+        returnShipmentMap.set(f.request_id, f);
+      } else if (f.shipment_type === "replacement_outbound") {
+        replacementShipmentMap.set(f.request_id, f);
+      }
+    }
+  }
+
+  // Fetch return requests
+  const { data: returnsRaw } = await supabase
+    .from("order_returns")
+    .select("id, status, reason, request_type, created_at")
+    .eq("order_id", id)
+    .order("created_at", { ascending: false });
+
+  type ReturnRow = {
+    id: string;
+    status: string;
+    reason: string;
+    request_type: string;
+    created_at: string;
+  };
+
+  const typedReturns = (returnsRaw ?? []) as unknown as ReturnRow[];
 
   // Fetch color-aware product images for each order item
   type ImgRow = { url: string; variant_id?: string | null; variant?: { options?: Record<string, string> | null } | null };
@@ -119,9 +146,10 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
 
   const canCancel = isOrderCancellable(order.status as Parameters<typeof isOrderCancellable>[0]);
   const canReturn = ["delivered", "partially_returned"].includes(order.status);
-  const hasActiveReturn = typedReturns.some((r) =>
+  const activeReturn = typedReturns.find((r) =>
     ["requested", "approved", "pickup_scheduled", "in_transit"].includes(r.status),
   );
+  const hasActiveReturn = Boolean(activeReturn);
 
   return (
     <div className="container py-8">
@@ -194,11 +222,15 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
         </Card>
       )}
 
-      {/* Active return notice */}
-      {hasActiveReturn && (
+      {/* Active return/replacement notice */}
+      {hasActiveReturn && activeReturn && (
         <Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
           <CardContent className="py-4 text-sm">
-            <p className="font-medium">Return / Replacement in progress</p>
+            <p className="font-medium">
+              {activeReturn.request_type === "replacement"
+                ? "Replacement in progress"
+                : "Return in progress"}
+            </p>
             <p className="text-muted-foreground">
               Your request is being processed. We will update you shortly.
             </p>
@@ -267,26 +299,96 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
             </CardContent>
           </Card>
 
-          {/* Return requests detail */}
+          {/* Return / Replacement requests */}
           {typedReturns.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle>Return / Replacement Requests</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4 text-sm">
+              <CardContent className="space-y-5 text-sm">
                 {typedReturns.map((r) => {
+                  const isReplacement = r.request_type === "replacement";
                   const returnJourney = ORDER_JOURNEY[r.status as keyof typeof ORDER_JOURNEY];
+                  const pickupShipment = returnShipmentMap.get(r.id);
+                  const replacementShipment = replacementShipmentMap.get(r.id);
+
                   return (
-                    <div key={r.id} className="rounded-lg border p-3 space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-medium capitalize">{r.reason}</p>
+                    <div key={r.id} className="rounded-lg border p-4 space-y-3">
+                      {/* Header: type badge + reason + status */}
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="space-y-1">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            isReplacement
+                              ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                              : "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300"
+                          }`}>
+                            {isReplacement ? "Replacement Request" : "Return Request"}
+                          </span>
+                          <p className="font-medium capitalize">{r.reason}</p>
+                        </div>
                         <StatusBadge status={r.status} />
                       </div>
+
                       <p className="text-xs text-muted-foreground">
                         Submitted on {formatDate(r.created_at)}
                       </p>
+
                       {returnJourney?.hint && (
                         <p className="text-xs text-muted-foreground">{returnJourney.hint}</p>
+                      )}
+
+                      {/* Return pickup tracking */}
+                      {pickupShipment?.tracking_number && (
+                        <div className="rounded-md bg-muted/50 p-3 space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Return Pickup Tracking
+                          </p>
+                          <p className="font-mono text-xs">{pickupShipment.tracking_number}</p>
+                          {pickupShipment.carrier && (
+                            <p className="text-xs text-muted-foreground">via {pickupShipment.carrier}</p>
+                          )}
+                          {pickupShipment.tracking_url && (
+                            <a
+                              href={pickupShipment.tracking_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-primary hover:underline"
+                            >
+                              Track pickup
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Replacement outbound tracking (only for replacement requests) */}
+                      {isReplacement && replacementShipment?.tracking_number && (
+                        <div className="rounded-md bg-muted/50 p-3 space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Replacement Shipment Tracking
+                          </p>
+                          <p className="font-mono text-xs">{replacementShipment.tracking_number}</p>
+                          {replacementShipment.carrier && (
+                            <p className="text-xs text-muted-foreground">via {replacementShipment.carrier}</p>
+                          )}
+                          {replacementShipment.estimated_delivery && (
+                            <p className="text-xs text-muted-foreground">
+                              Est. delivery:{" "}
+                              {new Date(replacementShipment.estimated_delivery).toLocaleDateString("en-IN", {
+                                day: "numeric", month: "short", year: "numeric",
+                              })}
+                            </p>
+                          )}
+                          {replacementShipment.tracking_url && (
+                            <a
+                              href={replacementShipment.tracking_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-primary hover:underline"
+                            >
+                              Track replacement
+                            </a>
+                          )}
+                        </div>
                       )}
                     </div>
                   );
