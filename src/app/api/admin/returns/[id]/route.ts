@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
 import { PERMISSIONS } from "@/lib/admin/permissions";
 import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
+import { sendReturnApprovedEmail, sendReturnRejectedEmail } from "@/lib/email";
 import { NotFoundError, OrderStateError } from "@/lib/errors";
 
 const schema = z.object({
@@ -91,6 +92,54 @@ export const PATCH = withApiHandler(
       entityId: returnId,
       metadata: { note, forced: action === "approve_forced" },
     });
+
+    // ── Fire-and-forget lifecycle email ──────────────────────────────────────
+    void (async () => {
+      try {
+        const { data: ret } = await db
+          .from("order_returns")
+          .select("order_id, request_type, order:orders!order_id(order_number, user_id)")
+          .eq("id", returnId)
+          .single();
+
+        if (!ret) return;
+
+        const orderRow = Array.isArray(ret.order) ? ret.order[0] : ret.order;
+        if (!orderRow?.user_id) return;
+
+        const { data: profile } = await db
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", orderRow.user_id)
+          .maybeSingle();
+
+        if (!profile?.email) return;
+
+        const requestType = (ret.request_type === "replacement" ? "replacement" : "return") as "return" | "replacement";
+
+        if (action === "reject") {
+          await sendReturnRejectedEmail({
+            to:           profile.email,
+            customerName: profile.full_name ?? profile.email,
+            orderId:      ret.order_id,
+            orderNumber:  orderRow.order_number,
+            requestType,
+            reason:       note,
+          });
+        } else {
+          await sendReturnApprovedEmail({
+            to:           profile.email,
+            customerName: profile.full_name ?? profile.email,
+            orderId:      ret.order_id,
+            orderNumber:  orderRow.order_number,
+            requestType,
+            reviewNote:   note,
+          });
+        }
+      } catch (emailErr) {
+        console.error("[admin/returns] lifecycle email failed:", emailErr);
+      }
+    })();
 
     return apiSuccess({ success: true });
   },

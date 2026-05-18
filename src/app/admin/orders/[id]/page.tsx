@@ -7,6 +7,9 @@ import { AdminTrackingForm } from "@/components/admin/orders/tracking-form";
 import type { FulfillmentData } from "@/components/admin/orders/tracking-form";
 import { AdminReturnActions } from "@/components/admin/orders/return-actions";
 import { ReturnPickupActions } from "@/components/admin/orders/return-pickup-actions";
+import { AdminRefundPanel } from "@/components/admin/orders/refund-panel";
+import { AdminOrderNotesPanel } from "@/components/admin/orders/order-notes-panel";
+import { ReturnLifecycleActions } from "@/components/admin/orders/return-lifecycle-actions";
 import { StatusBadge } from "@/components/common/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -475,12 +478,20 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                       {["approved", "pickup_scheduled", "in_transit", "received"].includes(r.status) && (
                         <ReturnPickupActions returnId={r.id} returnStatus={r.status} />
                       )}
+
+                      {/* Post-warehouse lifecycle — inspected → accepted → closed */}
+                      {["received", "inspected", "accepted", "refunded", "replaced"].includes(r.status) && (
+                        <ReturnLifecycleActions returnId={r.id} returnStatus={r.status} />
+                      )}
                     </div>
                   );
                 })}
               </CardContent>
             </Card>
           )}
+          {/* ── Admin Order Notes ────────────────────────────────────── */}
+          <AdminOrderNotesPanel orderId={orderId} />
+
         </div>
 
         {/* ── Right column ────────────────────────────────────────────── */}
@@ -571,6 +582,18 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               </CardContent>
             </Card>
           )}
+
+          {/* ── Admin Refund Panel ────────────────────────────────── */}
+          <AdminRefundPanel
+            orderId={orderId}
+            orderStatus={order.status}
+            paymentProvider={payment?.provider ?? "cod"}
+            items={(order.items as Array<{
+              id: string; product_name: string; variant_name: string | null;
+              quantity: number; unit_price: number;
+            }>)}
+            orderShipping={Number(order.shipping)}
+          />
 
           {/* Order Progress — status history with timestamps */}
           <Card>

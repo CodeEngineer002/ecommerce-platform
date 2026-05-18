@@ -20,8 +20,9 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useServerCart } from "@/features/cart/hooks/use-server-cart";
 import { CheckoutAddressPanel } from "@/features/checkout/components/checkout-address-panel";
+import { StripePaymentForm } from "@/features/checkout/components/stripe-payment-form";
 import { useCreateOrder } from "@/features/orders/hooks/use-orders";
-import { ROUTES } from "@/lib/constants";
+import { ROUTES, CURRENCY } from "@/lib/constants";
 import { useFormatPrice } from "@/hooks/use-format-price";
 import { checkoutExtrasSchema, type CheckoutExtrasData } from "@/lib/validators";
 import { useCartStore } from "@/store/cart-store";
@@ -108,7 +109,7 @@ export default function CheckoutPage() {
   const items      = useCartStore((s) => s.items);
   const serverCartId = useCartStore((s) => s.serverCartId);
   const { user } = useUserStore();
-  const { mutate: createOrder, isPending } = useCreateOrder();
+  const { mutate: createOrder, isPending, data: orderResult } = useCreateOrder();
   // Sync guard — prevents a second tap/click from firing a second mutation
   // before React re-renders with isPending=true (async state timing gap).
   const submittingRef = useRef(false);
@@ -278,6 +279,26 @@ export default function CheckoutPage() {
           title="Your cart is empty"
           action={{ label: "Go Shopping", href: ROUTES.products }}
         />
+      </div>
+    );
+  }
+
+  // ── Stripe Payment Step ────────────────────────────────────────────────────
+  // Once the order is created and the server returns a clientSecret, hide
+  // the checkout form and show the Stripe Payment Element instead.
+
+  if (orderResult?.clientSecret) {
+    return (
+      <div className="container py-8">
+        <h1 className="mb-8 text-2xl font-bold">Complete Payment</h1>
+        <div className="mx-auto max-w-lg">
+          <StripePaymentForm
+            clientSecret={orderResult.clientSecret}
+            orderId={orderResult.orderId}
+            totalInSmallestUnit={Math.round((pricing?.total ?? 0) * 100)}
+            currency={CURRENCY}
+          />
+        </div>
       </div>
     );
   }

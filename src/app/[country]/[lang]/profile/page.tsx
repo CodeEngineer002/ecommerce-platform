@@ -11,8 +11,8 @@ export default async function LocaleProfilePage() {
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
 
   return (
-    <div className="container max-w-2xl py-8">
-      <h1 className="mb-8 text-2xl font-bold">My Profile</h1>
+    <div className="max-w-2xl">
+      <h1 className="mb-6 text-2xl font-bold">My Profile</h1>
       <ProfileForm profile={profile} />
     </div>
   );

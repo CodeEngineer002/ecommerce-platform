@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
 import { PERMISSIONS } from "@/lib/admin/permissions";
 import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
+import { sendReturnPickupUpdateEmail } from "@/lib/email";
 import { NotFoundError, OrderStateError } from "@/lib/errors";
 
 const schema = z.object({
@@ -89,6 +90,47 @@ export const PATCH = withApiHandler(
       entityId:   returnId,
       metadata:   { note },
     });
+
+    // ── Fire-and-forget pickup status email ──────────────────────────────────
+    void (async () => {
+      try {
+        const stageMap: Record<typeof action, "scheduled" | "collected" | "received"> = {
+          schedule:  "scheduled",
+          collected: "collected",
+          received:  "received",
+        };
+        const stage = stageMap[action];
+
+        const { data: ret } = await db
+          .from("order_returns")
+          .select("order_id, request_type, order:orders!order_id(order_number, user_id)")
+          .eq("id", returnId)
+          .single();
+
+        if (!ret) return;
+        const orderRow = Array.isArray(ret.order) ? ret.order[0] : ret.order;
+        if (!orderRow?.user_id) return;
+
+        const { data: profile } = await db
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", orderRow.user_id)
+          .maybeSingle();
+
+        if (!profile?.email) return;
+
+        await sendReturnPickupUpdateEmail({
+          to:           profile.email,
+          customerName: profile.full_name ?? profile.email,
+          orderId:      ret.order_id,
+          orderNumber:  orderRow.order_number,
+          stage,
+          requestType:  (ret.request_type === "replacement" ? "replacement" : "return") as "return" | "replacement",
+        });
+      } catch (emailErr) {
+        console.error("[admin/returns/pickup] email failed:", emailErr);
+      }
+    })();
 
     const successMessages: Record<typeof action, string> = {
       schedule:  "Pickup scheduled",

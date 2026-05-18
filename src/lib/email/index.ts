@@ -14,6 +14,9 @@ import { OrderConfirmationEmail } from "./templates/order-confirmation";
 import { OrderShippedEmail } from "./templates/order-shipped";
 import { OrderCancelledEmail } from "./templates/order-cancelled";
 import { RefundProcessedEmail } from "./templates/refund-processed";
+import { ReturnApprovedEmail } from "./templates/return-approved";
+import { ReturnRejectedEmail } from "./templates/return-rejected";
+import { ReturnPickupUpdateEmail, type PickupStage } from "./templates/return-pickup-update";
 import type { EmailOrderSummary } from "./templates/types";
 
 const STORE_NAME = process.env.STORE_NAME ?? "ShopNest";
@@ -93,6 +96,83 @@ export async function sendOrderCancelledEmail(opts: {
       refundAmount: opts.refundAmount,
       currencyCode: opts.currencyCode,
       storeName: STORE_NAME,
+    }),
+  });
+}
+
+// ── Return Approved ───────────────────────────────────────────────────────────
+
+export async function sendReturnApprovedEmail(opts: {
+  to: string;
+  customerName: string;
+  orderId: string;
+  orderNumber: string;
+  requestType: "return" | "replacement";
+  reviewNote?: string | null;
+}): Promise<void> {
+  void sendEmail({
+    to: opts.to,
+    subject: `Your ${opts.requestType} request for order #${opts.orderNumber} has been approved — ${STORE_NAME}`,
+    react: React.createElement(ReturnApprovedEmail, {
+      customerName: opts.customerName,
+      orderNumber:  opts.orderNumber,
+      orderUrl:     orderUrl(opts.orderId),
+      requestType:  opts.requestType,
+      reviewNote:   opts.reviewNote,
+      storeName:    STORE_NAME,
+    }),
+  });
+}
+
+// ── Return Rejected ───────────────────────────────────────────────────────────
+
+export async function sendReturnRejectedEmail(opts: {
+  to: string;
+  customerName: string;
+  orderId: string;
+  orderNumber: string;
+  requestType: "return" | "replacement";
+  reason?: string | null;
+}): Promise<void> {
+  void sendEmail({
+    to: opts.to,
+    subject: `Update on your ${opts.requestType} request for order #${opts.orderNumber} — ${STORE_NAME}`,
+    react: React.createElement(ReturnRejectedEmail, {
+      customerName: opts.customerName,
+      orderNumber:  opts.orderNumber,
+      orderUrl:     orderUrl(opts.orderId),
+      requestType:  opts.requestType,
+      reason:       opts.reason,
+      storeName:    STORE_NAME,
+    }),
+  });
+}
+
+// ── Return Pickup Update ──────────────────────────────────────────────────────
+
+export async function sendReturnPickupUpdateEmail(opts: {
+  to: string;
+  customerName: string;
+  orderId: string;
+  orderNumber: string;
+  stage: PickupStage;
+  requestType: "return" | "replacement";
+}): Promise<void> {
+  const stageLabels: Record<PickupStage, string> = {
+    scheduled: "pickup scheduled",
+    collected: "item collected",
+    received:  "item received",
+  };
+  void sendEmail({
+    to: opts.to,
+    subject: `Order #${opts.orderNumber} — ${stageLabels[opts.stage]} — ${STORE_NAME}`,
+    react: React.createElement(ReturnPickupUpdateEmail, {
+      customerName: opts.customerName,
+      orderNumber:  opts.orderNumber,
+      orderUrl:     orderUrl(opts.orderId),
+      stage:        opts.stage,
+      requestType:  opts.requestType,
+      storeName:    STORE_NAME,
     }),
   });
 }

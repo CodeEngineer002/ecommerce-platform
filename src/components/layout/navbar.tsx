@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart, Menu, Search, ShoppingCart, User, X } from "lucide-react";
+import { Heart, LogOut, MapPin, Menu, Package, Search, ShoppingCart, User, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -96,26 +96,67 @@ export function Navbar({ user }: NavbarProps) {
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full">
-                  <Avatar className="h-8 w-8">
+                <button
+                  className="flex items-center gap-2 rounded-full pl-1 pr-2 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Account menu"
+                >
+                  <Avatar className="h-8 w-8 ring-2 ring-primary/20">
                     <AvatarImage src={user.avatar_url ?? ""} />
-                    <AvatarFallback className="text-xs">
+                    <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
                       {getInitials(user.full_name ?? user.email ?? "U")}
                     </AvatarFallback>
                   </Avatar>
-                </Button>
+                  <span className="hidden max-w-[96px] truncate text-sm font-medium md:block">
+                    {user.full_name?.split(" ")[0] ?? user.email?.split("@")[0]}
+                  </span>
+                </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem asChild>
-                  <Link href={ROUTES.profile}>My Profile</Link>
+              <DropdownMenuContent align="end" className="w-56 rounded-xl p-1.5 shadow-lg">
+                {/* User identity header */}
+                <div className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2.5 mb-1">
+                  <Avatar className="h-9 w-9 ring-2 ring-primary/20">
+                    <AvatarImage src={user.avatar_url ?? ""} />
+                    <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
+                      {getInitials(user.full_name ?? user.email ?? "U")}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    {user.full_name && (
+                      <p className="truncate text-sm font-semibold leading-tight">{user.full_name}</p>
+                    )}
+                    <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                  </div>
+                </div>
+
+                <DropdownMenuSeparator className="my-1" />
+
+                <DropdownMenuItem asChild className="gap-2.5 rounded-lg px-3 py-2 text-sm">
+                  <Link href={ROUTES.profile}>
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    My Profile
+                  </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href={ROUTES.orders}>My Orders</Link>
+                <DropdownMenuItem asChild className="gap-2.5 rounded-lg px-3 py-2 text-sm">
+                  <Link href={ROUTES.addresses}>
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    My Addresses
+                  </Link>
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <form action="/api/auth/signout" method="post">
-                    <button className="w-full text-left text-destructive">Sign Out</button>
+                <DropdownMenuItem asChild className="gap-2.5 rounded-lg px-3 py-2 text-sm">
+                  <Link href={ROUTES.orders}>
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                    My Orders
+                  </Link>
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator className="my-1" />
+
+                <DropdownMenuItem asChild className="gap-2.5 rounded-lg px-3 py-2 text-sm text-destructive focus:text-destructive">
+                  <form action="/api/auth/signout" method="post" className="w-full">
+                    <button type="submit" className="flex w-full items-center gap-2.5">
+                      <LogOut className="h-4 w-4" />
+                      Sign Out
+                    </button>
                   </form>
                 </DropdownMenuItem>
               </DropdownMenuContent>

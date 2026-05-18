@@ -9,7 +9,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { useCartStore } from "@/store/cart-store";
 import type { CheckoutPayload } from "@/types";
 
-import { createOrder, deleteOrder, getOrderById, getOrders, createReturnRequest, cancelReturnRequest, type ReturnItem } from "../services/order.service";
+import { createOrder, deleteOrder, getOrderById, getOrders, createReturnRequest, cancelReturnRequest, type ReturnItem, type CreateOrderResult } from "../services/order.service";
 
 export const orderKeys = queryKeys.orders;
 
@@ -37,20 +37,24 @@ export function useOrder(orderId: string) {
   });
 }
 
-export function useCreateOrder() {  const router = useRouter();
+export function useCreateOrder() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { clearCart, setServerCart } = useCartStore();
 
-  return useMutation({
+  return useMutation<CreateOrderResult, Error, CheckoutPayload>({
     mutationFn: (payload: CheckoutPayload) => createOrder(payload),
-    onSuccess: (orderId) => {
-      // Clear Zustand immediately so UI shows empty cart
-      clearCart();
-      setServerCart(null);
-      // Remove cached cart data so next fetch is fresh
-      queryClient.removeQueries({ queryKey: queryKeys.cart.session });
-      queryClient.invalidateQueries({ queryKey: orderKeys.all });
-      router.push(ROUTES.orderSuccess(orderId));
+    onSuccess: (result) => {
+      if (!result.clientSecret) {
+        // COD path — clear cart and redirect to success page immediately.
+        clearCart();
+        setServerCart(null);
+        queryClient.removeQueries({ queryKey: queryKeys.cart.session });
+        queryClient.invalidateQueries({ queryKey: orderKeys.all });
+        router.push(ROUTES.orderSuccess(result.orderId));
+      }
+      // Stripe path — clientSecret is present; the checkout page watches
+      // mutation.data and renders the Stripe Payment Element.
     },
     onError: (error: Error) => {
       toast.error(error.message);

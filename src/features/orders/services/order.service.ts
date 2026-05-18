@@ -50,7 +50,14 @@ export function calculatePriceBreakdown(items: { quantity: number; price: number
   return { subtotal, tax, shipping, discount, total };
 }
 
-export async function createOrder(payload: CheckoutPayload): Promise<string> {
+export interface CreateOrderResult {
+  orderId: string;
+  /** Present only for Stripe payments — use to mount Stripe Payment Element. */
+  clientSecret?: string;
+  providerOrderId?: string;
+}
+
+export async function createOrder(payload: CheckoutPayload): Promise<CreateOrderResult> {
   const res = await fetch("/api/orders/create", {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
@@ -63,7 +70,11 @@ export async function createOrder(payload: CheckoutPayload): Promise<string> {
   }
 
   const { data } = await res.json();
-  return data.orderId;
+  return {
+    orderId:         data.orderId,
+    clientSecret:    data.clientSecret,
+    providerOrderId: data.providerOrderId,
+  };
 }
 
 export async function cancelOrder(orderId: string, reason?: string): Promise<void> {

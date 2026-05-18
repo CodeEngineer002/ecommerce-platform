@@ -458,7 +458,7 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
                             <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
                               {isReplacement
                                 ? "Your item has been received. Your replacement order is being processed."
-                                : "Your item has been received. Refund processing will begin shortly."}
+                                : "Your item has been received at our warehouse. Our team will inspect it and initiate your refund — typically within 3–5 business days."}
                             </p>
                           </div>
                         </div>

@@ -56,6 +56,8 @@
     "@react-email/components": "^1.0.12",
     "@react-pdf/renderer": "^4.5.1",
     "@sentry/nextjs": "^10.53.1",
+    "@stripe/react-stripe-js": "^6.4.0",
+    "@stripe/stripe-js": "^9.6.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.47.2",
     "@tailwindcss/typography": "^0.5.19",

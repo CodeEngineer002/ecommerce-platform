@@ -32,11 +32,19 @@ export async function updateSession(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
 
-  const protectedPaths = ["/profile", "/orders", "/checkout"];
+  // Match both bare paths (/checkout) AND localized paths (/us/en/checkout).
+  // Bare match: path starts directly with the segment.
+  // Localized match: path matches /<country>/<lang>/<segment>.
+  const protectedSegments = ["profile", "orders", "checkout"];
   const adminPaths = ["/admin"];
   const authPaths = ["/login", "/register", "/forgot-password"];
 
-  const isProtected = protectedPaths.some((p) => path.startsWith(p));
+  const isProtected =
+    protectedSegments.some((seg) => path.startsWith(`/${seg}`)) ||
+    protectedSegments.some((seg) =>
+      /^\/[a-z]{2}\/[a-z]{2}\//.test(path) &&
+      path.split("/")[3] === seg
+    );
   const isAdmin = adminPaths.some((p) => path.startsWith(p));
   const isAuthPage = authPaths.some((p) => path.startsWith(p));
 

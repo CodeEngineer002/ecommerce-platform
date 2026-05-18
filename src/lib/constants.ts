@@ -89,6 +89,7 @@ export const ROUTES = {
   order: (id: string) => `/orders/${id}`,
   orderReturn: (id: string) => `/orders/${id}/return`,
   profile: "/profile",
+  addresses: "/profile/addresses",
   login: "/login",
   register: "/register",
   forgotPassword: "/forgot-password",
