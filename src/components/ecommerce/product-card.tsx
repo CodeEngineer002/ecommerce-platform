@@ -3,6 +3,7 @@
 import { Heart, ShoppingCart, Star } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,14 @@ export function ProductCard({ product, className, showQuickAdd = true }: Product
   const { toggleItem, hasItem } = useWishlistStore();
   const { openCart } = useCartStore();
   const { mutate: addCartItem } = useAddCartItem();
-  const isWishlisted = hasItem(product.id);
+
+  // Defer wishlist reads until after hydration — Zustand persist loads from
+  // localStorage on the client only, so server-rendered HTML never knows the
+  // wishlist state. Without this guard the aria-label and Heart className differ
+  // between SSR and client, causing a React hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  const isWishlisted = mounted && hasItem(product.id);
 
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.preventDefault();

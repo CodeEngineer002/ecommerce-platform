@@ -53,8 +53,8 @@ describe("canTransitionOrder", () => {
     expect(canTransitionOrder("refund_processing", "partially_refunded")).toBe(true);
   });
 
-  it("allows failed → pending_payment (retry)", () => {
-    expect(canTransitionOrder("failed", "pending_payment")).toBe(true);
+  it("rejects failed → pending_payment (failed is terminal; retry requires new order)", () => {
+    expect(canTransitionOrder("failed", "pending_payment")).toBe(false);
   });
 
   it("rejects refunded → any", () => {
@@ -125,7 +125,7 @@ describe("isOrderCancellable", () => {
 
 describe("isOrderTerminal", () => {
   const terminals: OrderStatus[] = [
-    "refunded", "return_rejected", "replacement_rejected", "replacement_delivered",
+    "refunded", "failed", "return_rejected", "replacement_rejected", "replacement_delivered",
   ];
 
   it.each(terminals)("returns true for terminal status: %s", (status) => {

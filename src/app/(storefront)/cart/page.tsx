@@ -13,17 +13,26 @@ import { useRemoveCartItem, useUpdateCartQuantity } from "@/features/cart/hooks/
 import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST } from "@/lib/constants";
 import { useFormatPrice } from "@/hooks/use-format-price";
 import { useCartStore } from "@/store/cart-store";
+import type { CartItemDetail } from "@/domain/cart/types";
+import type { CartItemWithProduct } from "@/types";
 
 export default function CartPage() {
-  const { items, subtotal } = useCartStore();
+  const { items, serverCart, subtotal } = useCartStore();
   const { mutate: removeItem } = useRemoveCartItem();
   const { mutate: updateQuantity } = useUpdateCartQuantity();
   const fmt = useFormatPrice();
+
+  // serverCart is authoritative; items is the guest/cold-start fallback.
+  const totalQty = serverCart
+    ? serverCart.item_count
+    : items.reduce((s, i) => s + i.quantity, 0);
+  const isEmpty = totalQty === 0;
+
   const sub = subtotal();
   const shipping = sub >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
   const total = sub + shipping;
 
-  if (items.length === 0) {
+  if (isEmpty) {
     return (
       <div className="container py-16">
         <EmptyState
@@ -38,50 +47,31 @@ export default function CartPage() {
 
   return (
     <div className="container py-8">
-      <h1 className="mb-8 text-2xl font-bold">Shopping Cart ({items.reduce((s, i) => s + i.quantity, 0)} items)</h1>
+      <h1 className="mb-8 text-2xl font-bold">Shopping Cart ({totalQty} items)</h1>
 
       <div className="grid gap-8 lg:grid-cols-3">
         {/* Items */}
         <div className="lg:col-span-2">
           <ul className="divide-y rounded-lg border">
-            {items.map((item) => {
-              const product = item.variant.product;
-              const price = item.variant.price ?? product.base_price;
-              const image = product.images[0];
-
-              return (
-                <li key={item.variant_id} className="flex gap-4 p-4">
-                  <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border bg-muted">
-                    {image && (
-                      <Image src={image.url} alt={product.name} fill className="object-cover" sizes="80px" />
-                    )}
-                  </div>
-                  <div className="flex flex-1 flex-col gap-1">
-                    <Link href={ROUTES.product(product.slug)} className="font-medium hover:text-primary">
-                      {product.name}
-                    </Link>
-                    {item.variant.name !== "Default" && (
-                      <p className="text-xs text-muted-foreground">{item.variant.name}</p>
-                    )}
-                    <PriceDisplay price={price} size="sm" />
-                    <div className="flex items-center gap-4 pt-1">
-                      <QuantitySelector
-                        value={item.quantity}
-                        onChange={(q) => updateQuantity({ variantId: item.variant_id, quantity: q })}
-                      />
-                      <p className="text-sm font-semibold">{fmt(price * item.quantity)}</p>
-                      <button
-                        onClick={() => removeItem({ variantId: item.variant_id })}
-                        className="ml-auto text-muted-foreground hover:text-destructive"
-                        aria-label="Remove"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
+            {serverCart
+              ? serverCart.items.map((item) => (
+                  <ServerCartItem
+                    key={item.variant_id}
+                    item={item}
+                    fmt={fmt}
+                    onRemove={(vid) => removeItem({ variantId: vid })}
+                    onQtyChange={(vid, q) => updateQuantity({ variantId: vid, quantity: q })}
+                  />
+                ))
+              : items.map((item) => (
+                  <LegacyCartItem
+                    key={item.variant_id}
+                    item={item}
+                    fmt={fmt}
+                    onRemove={(vid) => removeItem({ variantId: vid })}
+                    onQtyChange={(vid, q) => updateQuantity({ variantId: vid, quantity: q })}
+                  />
+                ))}
           </ul>
         </div>
 
@@ -119,5 +109,105 @@ export default function CartPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Server cart item (authoritative — CartItemDetail) ─────────────────────────
+
+interface ServerItemProps {
+  item: CartItemDetail;
+  fmt: (n: number) => string;
+  onRemove: (variantId: string) => void;
+  onQtyChange: (variantId: string, qty: number) => void;
+}
+
+function ServerCartItem({ item, fmt, onRemove, onQtyChange }: ServerItemProps) {
+  return (
+    <li className="flex gap-4 p-4">
+      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border bg-muted">
+        {item.image_url && (
+          <Image src={item.image_url} alt={item.product_name} fill className="object-cover" sizes="80px" />
+        )}
+      </div>
+      <div className="flex flex-1 flex-col gap-1">
+        <p className="font-medium">{item.product_name}</p>
+        {item.variant_name && item.variant_name !== "Default" && (
+          <p className="text-xs text-muted-foreground">{item.variant_name}</p>
+        )}
+        {item.price_changed && (
+          <p className="text-xs text-amber-600">Price updated since you added this item</p>
+        )}
+        {item.low_stock && item.available_stock > 0 && (
+          <p className="text-xs text-amber-600">Only {item.available_stock} left in stock</p>
+        )}
+        {!item.is_available && (
+          <p className="text-xs text-destructive">This item is no longer available</p>
+        )}
+        <PriceDisplay price={item.current_unit_price} size="sm" />
+        <div className="flex items-center gap-4 pt-1">
+          <QuantitySelector
+            value={item.quantity}
+            max={item.available_stock}
+            onChange={(q) => onQtyChange(item.variant_id, q)}
+          />
+          <p className="text-sm font-semibold">{fmt(item.current_unit_price * item.quantity)}</p>
+          <button
+            onClick={() => onRemove(item.variant_id)}
+            className="ml-auto text-muted-foreground hover:text-destructive"
+            aria-label="Remove"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+// ── Legacy cart item (guest / cold-start fallback — CartItemWithProduct) ──────
+
+interface LegacyItemProps {
+  item: CartItemWithProduct;
+  fmt: (n: number) => string;
+  onRemove: (variantId: string) => void;
+  onQtyChange: (variantId: string, qty: number) => void;
+}
+
+function LegacyCartItem({ item, fmt, onRemove, onQtyChange }: LegacyItemProps) {
+  const product = item.variant.product;
+  const price = item.variant.price ?? product.base_price;
+  const image = product.images[0];
+
+  return (
+    <li className="flex gap-4 p-4">
+      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border bg-muted">
+        {image && (
+          <Image src={image.url} alt={product.name} fill className="object-cover" sizes="80px" />
+        )}
+      </div>
+      <div className="flex flex-1 flex-col gap-1">
+        <Link href={ROUTES.product(product.slug)} className="font-medium hover:text-primary">
+          {product.name}
+        </Link>
+        {item.variant.name !== "Default" && (
+          <p className="text-xs text-muted-foreground">{item.variant.name}</p>
+        )}
+        <PriceDisplay price={price} size="sm" />
+        <div className="flex items-center gap-4 pt-1">
+          <QuantitySelector
+            value={item.quantity}
+            onChange={(q) => onQtyChange(item.variant_id, q)}
+          />
+          <p className="text-sm font-semibold">{fmt(price * item.quantity)}</p>
+          <button
+            onClick={() => onRemove(item.variant_id)}
+            className="ml-auto text-muted-foreground hover:text-destructive"
+            aria-label="Remove"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </li>
   );
 }

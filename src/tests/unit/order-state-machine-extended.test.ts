@@ -139,6 +139,7 @@ describe("CANCELLABLE_ORDER_STATUSES invariants", () => {
 
 describe("isOrderTerminal", () => {
   it("refunded is terminal", () => expect(isOrderTerminal("refunded")).toBe(true));
+  it("failed is terminal (retry requires a new order)", () => expect(isOrderTerminal("failed")).toBe(true));
   it("delivered is NOT terminal", () => expect(isOrderTerminal("delivered")).toBe(false));
   it("processing is NOT terminal", () => expect(isOrderTerminal("processing")).toBe(false));
 });

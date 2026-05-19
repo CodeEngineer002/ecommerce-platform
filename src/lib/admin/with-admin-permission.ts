@@ -23,7 +23,7 @@ export interface AdminContext {
  * 2. profile.role must be 'admin' or 'super_admin'
  * 3. super_admin always passes (bypasses fine-grained check)
  * 4. admin: has_permission() called via user client (uses auth.uid() internally)
- *    - Legacy admins with no user_roles rows are allowed-all during transition
+ *    - Missing permission always throws ForbiddenError (RBAC fully enforced)
  */
 export async function requireAdminPermission(permission: PermissionCode): Promise<AdminContext> {
   const userClient = await createClient();
@@ -54,16 +54,8 @@ export async function requireAdminPermission(permission: PermissionCode): Promis
   });
 
   if (!hasPerm) {
-    // Legacy transition: admins with no user_roles entries predate RBAC — allow-all
-    const { count } = await db
-      .from("user_roles")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id);
-
-    if ((count ?? 0) === 0) {
-      return { user, role: profile.role, db };
-    }
-
+    // RBAC is fully enforced — zero user_roles is NOT a bypass.
+    // Every admin must have explicit permission assignments.
     throw new ForbiddenError(`Missing permission: ${permission}`);
   }
 

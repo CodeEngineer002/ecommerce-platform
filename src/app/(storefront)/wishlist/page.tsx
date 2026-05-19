@@ -25,9 +25,7 @@ export default function WishlistPage() {
         <ProductGrid
           products={items.map((p) => ({
             ...p,
-            category: null,
-            images: [],
-            variants: [],
+            category: p.category ?? null,
           }))}
         />
       )}

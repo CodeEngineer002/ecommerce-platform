@@ -1,5 +1,6 @@
 "use client";
 
+import { ShoppingBag } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { AddToCartSection } from "@/app/(storefront)/products/[slug]/add-to-cart-section";
@@ -59,6 +60,9 @@ export function ProductDetailClient({ product, children }: Props) {
   const [flatVariantId, setFlatVariantId] = useState<string | null>(
     activeVariants[0]?.id ?? null
   );
+
+  // Tracks whether the add-to-cart mutation is in flight (notified by AddToCartSection)
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
 
   // Derived: the SKU variant that goes into the cart
   const selectedVariant = hasColorSize
@@ -129,7 +133,7 @@ export function ProductDetailClient({ product, children }: Props) {
       />
 
       {/* Right column — server-rendered metadata + interactive controls */}
-      <div className="space-y-6">
+      <div className="relative space-y-6">
         {children}
 
         {hasColorSize ? (
@@ -147,7 +151,39 @@ export function ProductDetailClient({ product, children }: Props) {
           selectedVariantId={selectedVariantId}
           showVariantSelector={!hasColorSize}
           onVariantChange={setFlatVariantId}
+          onLoadingChange={setIsAddingToCart}
         />
+
+        {/* ── Add-to-cart overlay (covers full right column) ────────────
+            Rendered LAST so stable siblings above are never position-shifted
+            by its appearance/disappearance (absolute positioning means DOM
+            order has no effect on layout). */}
+        {isAddingToCart && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-background/70 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-4 rounded-2xl border bg-background px-10 py-8 shadow-2xl">
+              {/* Spinner ring + icon */}
+              <div className="relative flex h-16 w-16 items-center justify-center">
+                <span className="absolute inset-0 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />
+                <ShoppingBag className="h-7 w-7 text-primary" />
+              </div>
+              {/* Text */}
+              <div className="space-y-1 text-center">
+                <p className="text-base font-semibold tracking-tight">Adding to cart</p>
+                <p className="text-sm text-muted-foreground">Checking product availability…</p>
+              </div>
+              {/* Bouncing dots */}
+              <div className="flex items-center gap-1.5">
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className="h-2 w-2 animate-bounce rounded-full bg-primary"
+                    style={{ animationDelay: `${i * 0.15}s` }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

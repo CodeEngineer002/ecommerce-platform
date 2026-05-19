@@ -182,13 +182,14 @@ describe("requireAdminPermission — fine-grained permission (admin role)", () =
     ).rejects.toThrow(ForbiddenError);
   });
 
-  it("grants legacy-admin access when has_permission false but zero user_roles", async () => {
+  it("throws ForbiddenError when has_permission false even if zero user_roles (no bypass)", async () => {
     authedAs("admin");
     permissionResult(false);
-    userRolesCount(0); // pre-RBAC admin — allow-all during transition
+    userRolesCount(0); // zero roles = no access; RBAC is fully enforced
 
-    const ctx = await requireAdminPermission(PERMISSIONS.ORDERS_MANAGE);
-    expect(ctx.user.id).toBe(MOCK_USER.id);
+    await expect(
+      requireAdminPermission(PERMISSIONS.ORDERS_MANAGE),
+    ).rejects.toThrow(ForbiddenError);
   });
 
   it("checks has_permission with the exact permission code requested", async () => {

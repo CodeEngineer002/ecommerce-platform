@@ -109,9 +109,12 @@ function assertCartOwnership(cart: CartRow, identity: CartIdentity): void {
 
 // ── Variant fetch helper ──────────────────────────────────────────────────────
 
-async function fetchVariant(variantId: string): Promise<VariantWithProduct> {
-  const db = createServiceClient();
-  const { data } = await db
+async function fetchVariant(
+  variantId: string,
+  db?: ReturnType<typeof createServiceClient>,
+): Promise<VariantWithProduct> {
+  const dbClient = db ?? createServiceClient();
+  const { data } = await dbClient
     .from("product_variants")
     .select(
       "id, price, is_active, options, sku, product:products(id, name, base_price, is_active, images:product_images(url, alt_text, variant_id, variant:product_variants(options))), inventory_levels(quantity, reserved)",
@@ -132,11 +135,14 @@ async function fetchVariant(variantId: string): Promise<VariantWithProduct> {
 
 // ── Cart summary builder ──────────────────────────────────────────────────────
 
-async function buildCartSummary(cartId: string): Promise<CartSummary> {
-  const db = createServiceClient();
+async function buildCartSummary(
+  cartId: string,
+  db?: ReturnType<typeof createServiceClient>,
+): Promise<CartSummary> {
+  const dbClient = db ?? createServiceClient();
 
   // Fetch cart + items in one query
-  const { data: cart } = await db
+  const { data: cart } = await dbClient
     .from("carts")
     .select("*, cart_items(id, variant_id, quantity, unit_price_snapshot, added_at, updated_at)")
     .eq("id", cartId)
@@ -155,7 +161,7 @@ async function buildCartSummary(cartId: string): Promise<CartSummary> {
   // options — needed to build variant_name ("Black / XL") and pick color-specific image.
   // alt_text — needed to match the colour-variant image (seed images are tagged by colour in alt_text).
   const variantIds = rawItems.map((i) => i.variant_id);
-  const { data: variants } = await db
+  const { data: variants } = await dbClient
     .from("product_variants")
     .select(
       "id, price, is_active, sku, options, product:products(id, name, base_price, is_active, images:product_images(url, alt_text, variant_id, variant:product_variants(options))), inventory_levels(quantity, reserved)",
@@ -259,23 +265,23 @@ async function buildCartSummary(cartId: string): Promise<CartSummary> {
       low_stock: available > 0 && available <= LOW_STOCK_THRESHOLD,
     });
 
-    lineItems.push({ variantId: raw.variant_id, quantity: effectiveQty, unitPrice: currentPrice });
+    lineItems.push({ variantId: raw.variant_id, quantity: effectiveQty, unitPrice: currentPrice, productName: variant.product.name });
   }
 
   // Fetch coupon for pricing
   let couponData: CouponData | null = null;
   if (cartRow.coupon_code) {
-    const { data: coupon } = await db
+    const { data: coupon } = await dbClient
       .from("coupons")
       .select("id, code, type, value, min_order_value, max_discount, is_active, valid_until")
       .eq("code", cartRow.coupon_code)
       .single();
 
     if (coupon && coupon.is_active && (!coupon.valid_until || new Date(coupon.valid_until) > new Date())) {
-      couponData = { code: coupon.code, type: coupon.type as "percentage" | "fixed", value: coupon.value, maxDiscount: coupon.max_discount ?? undefined };
+      couponData = { id: coupon.id, code: coupon.code, type: coupon.type as "percentage" | "fixed", value: coupon.value, maxDiscount: coupon.max_discount ?? null, minOrderValue: null };
     } else if (cartRow.coupon_code) {
       // Coupon is no longer valid — remove it and warn
-      await db.from("carts").update({ coupon_id: null, coupon_code: null }).eq("id", cartRow.id);
+      await dbClient.from("carts").update({ coupon_id: null, coupon_code: null }).eq("id", cartRow.id);
       warnings.push({ type: "COUPON_REMOVED", reason: "Coupon is no longer valid" });
     }
   }
@@ -293,7 +299,7 @@ async function buildCartSummary(cartId: string): Promise<CartSummary> {
     estimated_tax: breakdown.tax,
     total: breakdown.total,
     tax_rate: taxConfig.rate,
-    tax_label: taxConfig.label,
+    tax_label: taxConfig.label ?? "",
   };
 
   return {
@@ -323,7 +329,7 @@ function buildEmptyCartSummary(cartRow: CartRow): CartSummary {
     pricing: {
       subtotal: 0, discount: 0, estimated_shipping: 0, estimated_tax: 0, total: 0,
       tax_rate: taxConfig.rate,
-      tax_label: taxConfig.label,
+      tax_label: taxConfig.label ?? "",
     },
     warnings: [],
     item_count: 0,
@@ -357,7 +363,7 @@ export async function getOrCreateCart(identity: CartIdentity): Promise<CartSumma
       throw new CartNotFoundError();
     }
 
-    return buildCartSummary(cartId as string);
+    return buildCartSummary(cartId as string, db);
   }
 
   if (identity.session_id) {
@@ -378,7 +384,7 @@ export async function getOrCreateCart(identity: CartIdentity): Promise<CartSumma
           currency_code: currency,
         })
         .eq("id", existing.id);
-      return buildCartSummary(existing.id);
+      return buildCartSummary(existing.id, db);
     }
 
     const { data: created } = await db
@@ -396,7 +402,7 @@ export async function getOrCreateCart(identity: CartIdentity): Promise<CartSumma
     if (!created) throw new CartNotFoundError();
 
     await emitCartEvent(db, "cart_created", { cartId: created.id });
-    return buildCartSummary(created.id);
+    return buildCartSummary(created.id, db);
   }
 
   throw new CartOwnershipError();
@@ -428,26 +434,23 @@ export async function addCartItem(
 
   const db = createServiceClient();
 
-  // Ownership + status check
-  const { data: cart } = await db.from("carts").select("*").eq("id", cartId).single();
-  if (!cart) throw new CartNotFoundError(cartId);
-  const cartRow = cart as CartRow;
+  // Run 3 independent reads in parallel: cart ownership, variant validation, existing item qty
+  const [cartResult, variant, existingResult] = await Promise.all([
+    db.from("carts").select("*").eq("id", cartId).single(),
+    fetchVariant(input.variant_id, db),
+    db.from("cart_items").select("id, quantity").eq("cart_id", cartId).eq("variant_id", input.variant_id).single(),
+  ]);
+
+  if (!cartResult.data) throw new CartNotFoundError(cartId);
+  const cartRow = cartResult.data as CartRow;
   assertCartOwnership(cartRow, identity);
   assertCartMutable(cartRow.status);
 
   // Server-side variant + stock validation
-  const variant = await fetchVariant(input.variant_id);
   const available = sumAvailableStock(variant.inventory_levels);
 
   // Check if already in cart — ADDITIVE behavior: new = existing + requested
-  const { data: existing } = await db
-    .from("cart_items")
-    .select("id, quantity")
-    .eq("cart_id", cartId)
-    .eq("variant_id", input.variant_id)
-    .single();
-
-  const previousQty = existing?.quantity ?? 0;
+  const previousQty = existingResult.data?.quantity ?? 0;
   const requestedTotal = previousQty + input.quantity;
   // Cap: stock is the real constraint; CART_MAX_QUANTITY is a hard safety limit
   const cappedQty = Math.min(requestedTotal, available, CART_MAX_QUANTITY);
@@ -472,7 +475,8 @@ export async function addCartItem(
     { onConflict: "cart_id,variant_id" },
   );
 
-  await emitCartEvent(db, "item_added", {
+  // Fire-and-forget: cart events are analytics-only and must not block the response
+  void emitCartEvent(db, "item_added", {
     cartId,
     actorId: identity.user_id,
     metadata: {
@@ -484,7 +488,7 @@ export async function addCartItem(
     },
   });
 
-  const summary = await buildCartSummary(cartId);
+  const summary = await buildCartSummary(cartId, db);
   return {
     ...summary,
     add_result: {
@@ -518,23 +522,22 @@ export async function updateCartItemQuantity(
 
   const db = createServiceClient();
 
-  const { data: cart } = await db.from("carts").select("*").eq("id", cartId).single();
-  if (!cart) throw new CartNotFoundError(cartId);
-  const cartRow = cart as CartRow;
+  // Run 3 independent reads in parallel: cart, item existence, variant stock
+  const [cartResult, itemResult, variant] = await Promise.all([
+    db.from("carts").select("*").eq("id", cartId).single(),
+    db.from("cart_items").select("id").eq("cart_id", cartId).eq("variant_id", variantId).single(),
+    fetchVariant(variantId, db),
+  ]);
+
+  if (!cartResult.data) throw new CartNotFoundError(cartId);
+  const cartRow = cartResult.data as CartRow;
   assertCartOwnership(cartRow, identity);
   assertCartMutable(cartRow.status);
 
   // Check item exists
-  const { data: item } = await db
-    .from("cart_items")
-    .select("id")
-    .eq("cart_id", cartId)
-    .eq("variant_id", variantId)
-    .single();
-  if (!item) throw new CartItemNotFoundError(variantId);
+  if (!itemResult.data) throw new CartItemNotFoundError(variantId);
 
   // Stock check
-  const variant = await fetchVariant(variantId);
   const available = sumAvailableStock(variant.inventory_levels);
   if (available < quantity) throw new QuantityExceedsStockError(available);
 
@@ -544,13 +547,14 @@ export async function updateCartItemQuantity(
     .eq("cart_id", cartId)
     .eq("variant_id", variantId);
 
-  await emitCartEvent(db, "item_quantity_updated", {
+  // Fire-and-forget: cart events are analytics-only and must not block the response
+  void emitCartEvent(db, "item_quantity_updated", {
     cartId,
     actorId: identity.user_id,
     metadata: { variant_id: variantId, quantity },
   });
 
-  return buildCartSummary(cartId);
+  return buildCartSummary(cartId, db);
 }
 
 /**
@@ -577,13 +581,14 @@ export async function removeCartItem(
 
   if (error) throw new CartItemNotFoundError(variantId);
 
-  await emitCartEvent(db, "item_removed", {
+  // Fire-and-forget: cart events are analytics-only and must not block the response
+  void emitCartEvent(db, "item_removed", {
     cartId,
     actorId: identity.user_id,
     metadata: { variant_id: variantId },
   });
 
-  return buildCartSummary(cartId);
+  return buildCartSummary(cartId, db);
 }
 
 /**
@@ -604,9 +609,10 @@ export async function clearCart(
   await db.from("cart_items").delete().eq("cart_id", cartId);
   await db.from("carts").update({ coupon_id: null, coupon_code: null }).eq("id", cartId);
 
-  await emitCartEvent(db, "cart_cleared", { cartId, actorId: identity.user_id });
+  // Fire-and-forget: cart events are analytics-only and must not block the response
+  void emitCartEvent(db, "cart_cleared", { cartId, actorId: identity.user_id });
 
-  return buildCartSummary(cartId);
+  return buildCartSummary(cartId, db);
 }
 
 /**
@@ -672,13 +678,14 @@ export async function applyCoupon(
 
   await db.from("carts").update({ coupon_id: coupon.id, coupon_code: code }).eq("id", cartId);
 
-  await emitCartEvent(db, "coupon_applied", {
+  // Fire-and-forget: cart events are analytics-only and must not block the response
+  void emitCartEvent(db, "coupon_applied", {
     cartId,
     actorId: identity.user_id,
     metadata: { coupon_code: code },
   });
 
-  return buildCartSummary(cartId);
+  return buildCartSummary(cartId, db);
 }
 
 /**
@@ -698,9 +705,10 @@ export async function removeCoupon(
 
   await db.from("carts").update({ coupon_id: null, coupon_code: null }).eq("id", cartId);
 
-  await emitCartEvent(db, "coupon_removed", { cartId, actorId: identity.user_id });
+  // Fire-and-forget: cart events are analytics-only and must not block the response
+  void emitCartEvent(db, "coupon_removed", { cartId, actorId: identity.user_id });
 
-  return buildCartSummary(cartId);
+  return buildCartSummary(cartId, db);
 }
 
 /**
@@ -769,13 +777,14 @@ export async function mergeGuestCart(
       .eq("id", userCartId as string);
   }
 
-  await emitCartEvent(db, "cart_merged", {
+  // Fire-and-forget: cart events are analytics-only and must not block the response
+  void emitCartEvent(db, "cart_merged", {
     cartId: userCartId as string,
     actorId: userId,
     metadata: { guest_cart_id: guestCart.id },
   });
 
-  const mergedSummary = await buildCartSummary(userCartId as string);
+  const mergedSummary = await buildCartSummary(userCartId as string, db);
 
   // Warnings from the build (stale prices, unavailable items, etc.) serve as merge warnings too
   return { ...mergedSummary, merge_warnings: mergedSummary.warnings };
@@ -832,10 +841,12 @@ export async function previewCouponDiscount(
 
   const summary = await buildCartSummary(cartId);
   const couponData: CouponData = {
+    id: coupon.id,
     code: coupon.code,
     type: coupon.type as "percentage" | "fixed",
     value: coupon.value,
-    maxDiscount: coupon.max_discount ?? undefined,
+    maxDiscount: coupon.max_discount ?? null,
+    minOrderValue: null,
   };
   const discount = calculateDiscount(summary.pricing.subtotal, couponData);
 

@@ -50,7 +50,7 @@ const ALLOWED_TRANSITIONS: Record<string, OrderStatus[]> = {
                             "refunded", "partially_refunded"],
   partially_refunded:      ["refunded"],
   cancelled:               ["refunded"],
-  failed:                  ["pending_payment"],
+  failed:                  [],
   // Terminal states — no further transitions
   return_rejected:         [],
   replacement_rejected:    [],

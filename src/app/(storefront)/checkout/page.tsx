@@ -1,10 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, Loader2, ShoppingBag } from "lucide-react";
+import { AlertCircle, Loader2, PackageCheck, ShoppingBag } from "lucide-react";
 import Image from "next/image";
 import { useParams } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "react-hot-toast";
 
@@ -105,14 +105,37 @@ function CheckoutSkeleton() {
 
 export default function CheckoutPage() {
   const { isLoading: cartLoading } = useServerCart();
-  const serverCart = useCartStore((s) => s.serverCart);
-  const items      = useCartStore((s) => s.items);
+  const serverCart   = useCartStore((s) => s.serverCart);
+  const items        = useCartStore((s) => s.items);
   const serverCartId = useCartStore((s) => s.serverCartId);
+
+  // ── Authoritative cart payload for order creation ─────────────────────────
+  // serverCart is the canonical source of truth (any device, any session).
+  // items (legacy Zustand) is a fallback for guest/pre-hydration scenarios only.
+  // NEVER trust items when serverCart is populated — items can be stale/empty
+  // on a new device or fresh browser session where localStorage was cleared.
+  const cartItemsPayload = useMemo(() => {
+    if (serverCart?.items.length) {
+      return serverCart.items.map((i) => ({
+        variant_id: i.variant_id,
+        quantity:   i.quantity,
+      }));
+    }
+    // Guest fallback: enriched legacy items (populated by useCartHydration when !serverCart)
+    return items.map((i) => ({
+      variant_id: i.variant_id,
+      quantity:   i.quantity,
+    }));
+  }, [serverCart, items]);
   const { user } = useUserStore();
   const { mutate: createOrder, isPending, data: orderResult } = useCreateOrder();
   // Sync guard — prevents a second tap/click from firing a second mutation
   // before React re-renders with isPending=true (async state timing gap).
   const submittingRef = useRef(false);
+  // Stays true from the moment we submit until navigation away (or on error).
+  // Prevents the "Your cart is empty" flash that occurs when the cart is
+  // cleared server-side before the success-page navigation completes.
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const fmt = useFormatPrice();
 
   const params = useParams<{ country?: string }>();
@@ -229,9 +252,18 @@ export default function CheckoutPage() {
       };
     }
 
+    // Safety guard — should never happen if the UI gate works, but prevents
+    // sending an empty cartItems array to the API on edge-case state races.
+    if (cartItemsPayload.length === 0) {
+      toast.error("Your cart appears empty. Please add items and try again.");
+      submittingRef.current = false;
+      return;
+    }
+
+    setIsPlacingOrder(true);
     createOrder(
       {
-        cartItems:        items,
+        cartItems:        cartItemsPayload,
         shippingAddress:  toAddressPayload(selectedShipping),
         billingAddress:   toAddressPayload(billingAddress!),
         couponCode:       data.couponCode,
@@ -240,6 +272,7 @@ export default function CheckoutPage() {
         cartId:           serverCartId ?? serverCart?.id ?? undefined,
       },
       {
+        onError:   () => { setIsPlacingOrder(false); submittingRef.current = false; },
         onSettled: () => { submittingRef.current = false; },
       },
     );
@@ -269,9 +302,11 @@ export default function CheckoutPage() {
   }
 
   const cartItems = serverCart?.items ?? [];
-  const itemCount = serverCart?.item_count ?? items.length;
+  // Use cartItemsPayload.length as the canonical item count check —
+  // serverCart?.item_count is authoritative; items.length is the legacy fallback.
+  const itemCount = serverCart?.item_count ?? cartItemsPayload.length;
 
-  if (itemCount === 0 && !cartLoading) {
+  if (itemCount === 0 && !cartLoading && !isPlacingOrder) {
     return (
       <div className="container py-16">
         <EmptyState
@@ -538,6 +573,34 @@ export default function CheckoutPage() {
           </div>
         </div>
       </form>
+
+      {/* ── Order placing overlay ─────────────────────────────────────────── */}
+      {isPlacingOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-5 rounded-2xl border bg-background p-10 shadow-2xl">
+            <div className="relative flex h-20 w-20 items-center justify-center">
+              {/* Spinning ring */}
+              <span className="absolute inset-0 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+              <PackageCheck className="h-9 w-9 text-primary" />
+            </div>
+            <div className="space-y-1.5 text-center">
+              <p className="text-lg font-semibold">Placing your order…</p>
+              <p className="text-sm text-muted-foreground">
+                Please wait while we confirm your order. Don&apos;t close this page.
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="h-2 w-2 animate-bounce rounded-full bg-primary"
+                  style={{ animationDelay: `${i * 0.15}s` }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { CouponError, validateCoupon } from "@/domain/coupon/coupon-engine";
 import { calculatePricing } from "@/domain/pricing/pricing-engine";
 import type { LineItem } from "@/domain/pricing/types";
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
-import { CURRENCY } from "@/lib/constants";
+import { CART_MAX_QUANTITY, CURRENCY } from "@/lib/constants";
 import { AuthError, InventoryError, NotFoundError } from "@/lib/errors";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { getPaymentProvider } from "@/lib/payment";
@@ -17,7 +17,9 @@ import { addressSchema } from "@/lib/validators";
 // ── Request schema ────────────────────────────────────────────────────────────
 const cartItemSchema = z.object({
   variant_id: z.string().uuid(),
-  quantity: z.number().int().min(1).max(10),
+  // Max per-line matches CART_MAX_QUANTITY so the cart and order APIs are consistent.
+  // Real stock enforcement happens inside create_order_atomic via SELECT FOR UPDATE.
+  quantity: z.number().int().min(1).max(CART_MAX_QUANTITY),
 });
 
 const orderRequestSchema = z.object({
@@ -75,8 +77,15 @@ export const POST = withRateLimit(
       );
     }
 
-    const { cartItems, shippingAddress, billingAddress, couponCode, paymentProvider, notes, cartId } =
-      parsed.data;
+    const {
+      cartItems: clientCartItems,
+      shippingAddress,
+      billingAddress,
+      couponCode,
+      paymentProvider,
+      notes,
+      cartId,
+    } = parsed.data;
 
     const db = createServiceClient();
 
@@ -92,6 +101,68 @@ export const POST = withRateLimit(
       if (existing?.response_body) {
         return apiSuccess(existing.response_body as Record<string, unknown>);
       }
+    }
+
+    // ── Server-side cart loading + ownership verification ────────────────────
+    // When cartId is provided we load items directly from the DB and verify
+    // the cart belongs to the authenticated user. This prevents two classes of
+    // attack:
+    //   1. Using someone else's cartId to delete/convert their cart.
+    //   2. Sending a valid cartId but manipulated cartItems (price/qty tamper).
+    // When cartId is absent we fall back to client-submitted cartItems (guest
+    // checkout path — no server cart to load from).
+    let cartItems = clientCartItems;
+
+    if (cartId) {
+      const { data: cartRow, error: cartFetchError } = await db
+        .from("carts")
+        .select("id, user_id, status")
+        .eq("id", cartId)
+        .maybeSingle();
+
+      if (cartFetchError || !cartRow) {
+        end();
+        return apiError("Cart not found", 404, "CART_NOT_FOUND");
+      }
+
+      // Ownership check — reject if the cart belongs to a different user.
+      if (cartRow.user_id !== user.id) {
+        end();
+        return apiError("You do not own this cart", 403, "CART_OWNERSHIP_ERROR");
+      }
+
+      // Status check — reject if the cart was already converted/expired/deleted.
+      if (cartRow.status !== "active") {
+        end();
+        return apiError(
+          `Cart is ${cartRow.status} and cannot be checked out`,
+          409,
+          "CART_NOT_ACTIVE",
+        );
+      }
+
+      // Load items from the server — never trust client-submitted cartItems when
+      // we have an authoritative server cart.
+      const { data: serverItems, error: itemsError } = await db
+        .from("cart_items")
+        .select("variant_id, quantity")
+        .eq("cart_id", cartId);
+
+      if (itemsError) {
+        end();
+        return apiError("Failed to load cart items", 500, "CART_ITEMS_ERROR");
+      }
+
+      if (!serverItems || serverItems.length === 0) {
+        end();
+        return apiError("Cart is empty", 400, "CART_EMPTY");
+      }
+
+      // Overwrite client-submitted items with server-authoritative ones.
+      cartItems = serverItems.map((i) => ({
+        variant_id: i.variant_id,
+        quantity: i.quantity,
+      }));
     }
 
     // ── Fetch authoritative prices — never trust client-submitted prices ──────
@@ -197,8 +268,9 @@ export const POST = withRateLimit(
     }
 
     // ── Convert the specific cart used at checkout ───────────────────────────
-    // Prefer the explicit cartId sent by the client. If not provided, fall back
-    // to the most recently updated active cart (legacy behaviour).
+    // When cartId was provided it was already ownership-verified above; use it
+    // directly. If not provided, fall back to the most recently updated active
+    // cart owned by this user (legacy guest/no-cartId path).
     let cartToConvertId: string | null = cartId ?? null;
     if (!cartToConvertId) {
       const { data: fallbackCart } = await db
@@ -214,11 +286,14 @@ export const POST = withRateLimit(
 
     if (cartToConvertId) {
       const [, cartUpdateResult] = await Promise.all([
+        // Delete items only for this user's cart (user_id guard prevents touching
+        // another user's cart items even if cartToConvertId was somehow wrong).
         db.from("cart_items").delete().eq("cart_id", cartToConvertId),
         db.from("carts")
           .update({ status: "converted", converted_to_order_id: orderId as string })
           .eq("id", cartToConvertId)
-          .eq("status", "active"),  // only convert if still active (race guard)
+          .eq("user_id", user.id)       // ownership guard
+          .eq("status", "active"),       // only convert if still active (race guard)
       ]);
       if (cartUpdateResult.error) {
         console.error("[orders/create] cart conversion failed:", cartUpdateResult.error.message);

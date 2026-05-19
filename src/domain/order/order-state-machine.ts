@@ -41,7 +41,9 @@ const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   delivered:             ["return_requested", "replacement_requested", "refund_requested",
                           "partially_returned", "partially_refunded", "refunded"],
   cancelled:             ["refunded"],
-  failed:                ["pending_payment"],
+  // failed is a terminal state — no transitions out.
+  // Customers who want to retry must start a new checkout (new order).
+  failed:                [],
   return_requested:      ["return_approved", "return_rejected"],
   return_approved:       ["return_in_transit"],
   // After rejection the DB automatically reverts order to 'delivered' so the

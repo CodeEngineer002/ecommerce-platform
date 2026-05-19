@@ -2,7 +2,7 @@
 
 import { Loader2, ShoppingCart } from "lucide-react";
 import { Heart } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 
 import { QuantitySelector } from "@/components/ecommerce/quantity-selector";
@@ -25,6 +25,8 @@ interface Props {
   showVariantSelector?: boolean;
   /** Only used when showVariantSelector=true */
   onVariantChange?: (variantId: string) => void;
+  /** Notifies the parent when the add-to-cart mutation starts / settles */
+  onLoadingChange?: (isLoading: boolean) => void;
 }
 
 export function AddToCartSection({
@@ -32,6 +34,7 @@ export function AddToCartSection({
   selectedVariantId: controlledVariantId,
   showVariantSelector = false,
   onVariantChange,
+  onLoadingChange,
 }: Props) {
   const [quantity, setQuantity] = useState(1);
   const [localVariantId, setLocalVariantId] = useState(product.variants[0]?.id ?? null);
@@ -47,7 +50,19 @@ export function AddToCartSection({
   const { openCart, serverCart } = useCartStore();
   const { mutate: addCartItem, isPending: isAddingToCart } = useAddCartItem();
   const { toggleItem, hasItem } = useWishlistStore();
-  const isWishlisted = hasItem(product.id);
+
+  // Defer wishlist reads until after hydration — Zustand persist loads
+  // localStorage synchronously on the client, so SSR always sees `false`.
+  // Without this guard the aria-label / className differ between server and
+  // first client render, triggering a React hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const isWishlisted = mounted && hasItem(product.id);
+
+  // Notify parent (ProductDetailClient) so it can show the full-column overlay
+  useEffect(() => {
+    onLoadingChange?.(isAddingToCart);
+  }, [isAddingToCart, onLoadingChange]);
 
   const activeVariants = product.variants.filter((v) => v.is_active);
   const selectedVariant = activeVariants.find((v) => v.id === selectedVariantId);

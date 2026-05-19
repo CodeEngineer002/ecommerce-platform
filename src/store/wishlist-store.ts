@@ -1,13 +1,13 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 
-import type { Product } from "@/types";
+import type { ProductWithDetails } from "@/types";
 
 interface WishlistState {
-  items: Product[];
-  addItem: (product: Product) => void;
+  items: ProductWithDetails[];
+  addItem: (product: ProductWithDetails) => void;
   removeItem: (productId: string) => void;
-  toggleItem: (product: Product) => void;
+  toggleItem: (product: ProductWithDetails) => void;
   hasItem: (productId: string) => boolean;
   clear: () => void;
 }

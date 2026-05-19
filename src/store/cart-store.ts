@@ -73,12 +73,20 @@ export const useCartStore = create<CartState>()(
 
       setServerCart: (cart) =>
         set({
-          serverCart: cart,
-          serverCartId: cart?.id ?? null,
-          serverCartWarnings: cart?.warnings ?? [],
+          serverCart:          cart,
+          serverCartId:        cart?.id ?? null,
+          serverCartWarnings:  cart?.warnings ?? [],
+          // Sync persistedItems so useCartHydration can hydrate items on
+          // the rare guest/no-localStorage path.
           persistedItems: cart
             ? cart.items.map((i) => ({ variant_id: i.variant_id, quantity: i.quantity }))
             : get().persistedItems,
+          // NOTE: `items` is intentionally NOT synced here.
+          // `items` (CartItemWithProduct[]) requires full variant/product
+          // enrichment that serverCart.items (CartItemDetail) does not carry.
+          // All display consumers must read serverCart.items directly.
+          // The checkout payload already uses serverCart.items via cartItemsPayload.
+          // Only guest users (no serverCart) rely on items via useCartHydration.
         }, false, "setServerCart"),
 
       removeItemFromServerCart: (variantId) => {
@@ -214,7 +222,11 @@ export const useCartStore = create<CartState>()(
 
       subtotal: () => {
         const s = get();
+        // serverCart pricing is authoritative — always prefer it.
         if (s.serverCart) return s.serverCart.pricing.subtotal;
+        // Guest fallback: items enriched by useCartHydration (has variant/product data).
+        // For logged-in users, serverCart is always present so this branch only
+        // runs during the cold-start gap before useServerCart resolves.
         return s.items.reduce((sum, i) => {
           const price = i.variant.price ?? i.variant.product.base_price;
           return sum + price * i.quantity;

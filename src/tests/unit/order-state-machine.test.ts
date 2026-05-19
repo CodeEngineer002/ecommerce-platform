@@ -62,6 +62,7 @@ describe("Order state machine", () => {
 
   describe("isOrderTerminal", () => {
     it("refunded is terminal", () => expect(isOrderTerminal("refunded")).toBe(true));
+    it("failed is terminal (retry = new order)", () => expect(isOrderTerminal("failed")).toBe(true));
     it("delivered is not terminal", () => expect(isOrderTerminal("delivered")).toBe(false));
     it("cancelled is not terminal (can still refund)", () => expect(isOrderTerminal("cancelled")).toBe(false));
   });
