@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
 import { AuthError, NotFoundError, ReturnNotEligibleError, UnauthorizedOrderAccessError } from "@/lib/errors";
+import { withRateLimit } from "@/lib/rate-limit";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
 const returnItemSchema = z.object({
@@ -52,7 +53,9 @@ export const GET = withApiHandler(
 );
 
 // POST /api/orders/[id]/returns — create a return request
-export const POST = withApiHandler(
+// Rate limited: 5 requests per minute per IP (P2-9)
+export const POST = withRateLimit(
+  withApiHandler(
   async (request: Request, context: { params: Promise<{ id: string }> }) => {
     const userClient = await createClient();
     const {
@@ -111,5 +114,6 @@ export const POST = withApiHandler(
     }
 
     return apiSuccess({ returnId }, 201);
-  },
+  }),
+  { limit: 5, windowMs: 60_000, routeKey: "orders:returns:create" },
 );

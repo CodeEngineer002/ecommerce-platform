@@ -47,7 +47,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
   };
   const isReplacementOrder = typedOrder.order_type === "replacement";
 
-  // Fetch fulfillments, payment, return requests, status history, and linked orders in parallel
+  // Fetch fulfillments, payment, return requests, status history, order_events and linked orders in parallel
   const [
     { data: allFulfillmentsRaw },
     { data: paymentRaw },
@@ -55,6 +55,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
     { data: statusHistoryRaw },
     { data: replacementOrdersRaw },
     { data: parentOrderRaw },
+    { data: orderEventsRaw },
   ] = await Promise.all([
     db
       .from("order_fulfillments")
@@ -79,7 +80,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
       .order("created_at", { ascending: false }),
     db
       .from("order_status_history")
-      .select("id, from_status, to_status, reason, created_at")
+      .select("id, from_status, to_status, reason, created_at, changed_by, source")
       .eq("order_id", orderId)
       .order("created_at", { ascending: true }),
     // Fetch system-generated replacement orders linked to this parent order
@@ -96,6 +97,12 @@ export default async function AdminOrderDetailPage({ params }: Props) {
           .eq("id", typedOrder.parent_order_id)
           .single()
       : Promise.resolve({ data: null }),
+    // P2-5: order_events for rich admin timeline
+    db
+      .from("order_events")
+      .select("id, event_type, description, actor_type, actor_id, source, created_at")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: true }),
   ]);
 
   type AllFulfillmentRow = FulfillmentData & { shipment_type: string; request_id: string | null };
@@ -155,8 +162,21 @@ export default async function AdminOrderDetailPage({ params }: Props) {
     to_status: string;
     reason: string | null;
     created_at: string;
+    changed_by: string | null;
+    source: string | null;
   };
   const statusHistory = (statusHistoryRaw ?? []) as unknown as StatusHistoryRow[];
+
+  type OrderEventRow = {
+    id: string;
+    event_type: string;
+    description: string;
+    actor_type: string | null;
+    actor_id: string | null;
+    source: string;
+    created_at: string;
+  };
+  const orderEvents = (orderEventsRaw ?? []) as unknown as OrderEventRow[];
 
   const payment = paymentRaw as {
     id: string;
@@ -619,6 +639,23 @@ export default async function AdminOrderDetailPage({ params }: Props) {
 
                     const entryDate = new Date(entry.created_at);
 
+                    // P2-3: source → human-readable actor label
+                    const sourceLabel: string | null = entry.source
+                      ? entry.source === "admin_override"
+                        ? "Admin"
+                        : entry.source === "customer_action"
+                          ? "Customer"
+                          : entry.source === "webhook"
+                            ? "Payment Webhook"
+                            : entry.source === "system"
+                              ? "System"
+                              : entry.source.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+                      : null;
+
+                    const actorShort = entry.changed_by
+                      ? entry.changed_by.slice(0, 8) + "…"
+                      : null;
+
                     return (
                       <li key={entry.id} className="relative flex gap-3 pb-5 last:pb-0">
                         {/* Step icon */}
@@ -653,6 +690,20 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                             })}
                           </p>
 
+                          {/* P2-3: Actor + source */}
+                          {(sourceLabel || actorShort) && (
+                            <p className="text-xs text-muted-foreground">
+                              {sourceLabel && (
+                                <span className="inline-flex items-center rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-none mr-1">
+                                  {sourceLabel}
+                                </span>
+                              )}
+                              {actorShort && (
+                                <span className="font-mono text-[10px]">uid:{actorShort}</span>
+                              )}
+                            </p>
+                          )}
+
                           {/* Reason/note if present */}
                           {entry.reason && (
                             <p className="text-xs text-muted-foreground italic truncate">
@@ -667,6 +718,53 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               )}
             </CardContent>
           </Card>
+
+          {/* ── P2-5: Order Events log ──────────────────────────────── */}
+          {orderEvents.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Event Log</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ol className="space-y-3">
+                  {[...orderEvents].reverse().map((ev) => {
+                    const evDate = new Date(ev.created_at);
+                    const sourceTag = ev.source && ev.source !== "system"
+                      ? ev.source.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+                      : null;
+                    return (
+                      <li key={ev.id} className="flex gap-3 text-sm">
+                        <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40 ring-2 ring-border" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium capitalize">
+                              {ev.event_type.replace(/_/g, " ")}
+                            </span>
+                            {sourceTag && (
+                              <span className="inline-flex items-center rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-mono leading-none text-muted-foreground">
+                                {sourceTag}
+                              </span>
+                            )}
+                            {ev.actor_type && (
+                              <span className="inline-flex items-center rounded-sm border px-1.5 py-0.5 text-[10px] font-mono leading-none text-muted-foreground">
+                                {ev.actor_type}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-muted-foreground text-xs mt-0.5">{ev.description}</p>
+                          <p className="text-muted-foreground text-xs mt-0.5">
+                            {evDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                            {" at "}
+                            {evDate.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                          </p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

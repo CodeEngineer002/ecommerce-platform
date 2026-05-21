@@ -39,6 +39,22 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
 
   if (!orderRaw) notFound();
 
+  // P2-2: Fetch order_status_history for timestamped timeline
+  const { data: statusHistoryRaw } = await supabase
+    .from("order_status_history")
+    .select("id, from_status, to_status, reason, created_at")
+    .eq("order_id", id)
+    .order("created_at", { ascending: true });
+
+  type StatusHistoryRow = {
+    id: string;
+    from_status: string | null;
+    to_status: string;
+    reason: string | null;
+    created_at: string;
+  };
+  const statusHistory = (statusHistoryRaw ?? []) as unknown as StatusHistoryRow[];
+
   // payments(*) returns an array — extract first record
   type PaymentRow = { id: string; provider: string; status: string; amount: number };
   const paymentsArr = (orderRaw as unknown as { payments: PaymentRow[] }).payments ?? [];
@@ -634,13 +650,53 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
           </CardContent>
         </Card>
 
-        {/* ── Right column: Status Timeline ────────────────────────── */}
+        {/* ── Right column: Status Timeline (P2-2: real timestamps) ─── */}
         <Card className="h-fit">
           <CardHeader>
             <CardTitle className="text-sm">Order Progress</CardTitle>
           </CardHeader>
           <CardContent>
-            <OrderTimeline status={order.status} />
+            {statusHistory.length === 0 ? (
+              <OrderTimeline status={order.status} />
+            ) : (
+              <ol className="relative space-y-0">
+                <div className="absolute left-[10px] top-3 bottom-3 w-px bg-border" />
+                {[...statusHistory].reverse().map((entry, idx) => {
+                  const isFirst = idx === 0;
+                  const isBad =
+                    entry.to_status === "cancelled" ||
+                    entry.to_status === "failed";
+                  const journeyStep = ORDER_JOURNEY[entry.to_status as keyof typeof ORDER_JOURNEY];
+                  const label = journeyStep?.label
+                    ?? entry.to_status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                  const date = new Date(entry.created_at);
+                  return (
+                    <li key={entry.id} className="relative flex gap-3 pb-4 last:pb-0">
+                      <div className={`relative z-10 mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ring-2 ${
+                        isFirst
+                          ? isBad ? "bg-destructive ring-destructive/30" : "bg-primary ring-primary/30"
+                          : "bg-muted ring-border"
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium leading-tight ${
+                          isFirst && isBad ? "text-destructive" : isFirst ? "text-foreground" : "text-muted-foreground"
+                        }`}>
+                          {label}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                          {" at "}
+                          {date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                        </p>
+                        {entry.reason && (
+                          <p className="text-xs text-muted-foreground italic mt-0.5 truncate">{entry.reason}</p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
           </CardContent>
         </Card>
 

@@ -1,9 +1,8 @@
 "use client";
 
-import { ShoppingBag, Trash2 } from "lucide-react";
+import { AlertTriangle, ShoppingBag, Trash2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-
 import { PriceDisplay } from "@/components/ecommerce/price-display";
 import { QuantitySelector } from "@/components/ecommerce/quantity-selector";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -13,7 +12,7 @@ import { useRemoveCartItem, useUpdateCartQuantity } from "@/features/cart/hooks/
 import { FREE_SHIPPING_THRESHOLD, ROUTES, SHIPPING_COST } from "@/lib/constants";
 import { useFormatPrice } from "@/hooks/use-format-price";
 import { useCartStore } from "@/store/cart-store";
-import type { CartItemDetail } from "@/domain/cart/types";
+import type { CartItemDetail, CartWarning } from "@/domain/cart/types";
 import type { CartItemWithProduct } from "@/types";
 
 export default function CartPage() {
@@ -28,9 +27,16 @@ export default function CartPage() {
     : items.reduce((s, i) => s + i.quantity, 0);
   const isEmpty = totalQty === 0;
 
-  const sub = subtotal();
-  const shipping = sub >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
-  const total = sub + shipping;
+  // P2-1: Use server-authoritative pricing when available — avoids hardcoded
+  // FREE_SHIPPING_THRESHOLD / SHIPPING_COST mismatch with actual server values.
+  const sub      = serverCart ? serverCart.pricing.subtotal          : subtotal();
+  const shipping = serverCart ? serverCart.pricing.estimated_shipping : (sub >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST);
+  const tax      = serverCart ? serverCart.pricing.estimated_tax     : 0;
+  const total    = serverCart ? serverCart.pricing.total             : (sub + shipping);
+  const taxLabel = serverCart?.pricing.tax_label ?? null;
+
+  // How much more to add for free shipping (null when server handles it or already free)
+  const freeShippingGap = !serverCart && shipping > 0 ? FREE_SHIPPING_THRESHOLD - sub : null;
 
   if (isEmpty) {
     return (
@@ -48,6 +54,11 @@ export default function CartPage() {
   return (
     <div className="container py-8">
       <h1 className="mb-8 text-2xl font-bold">Shopping Cart ({totalQty} items)</h1>
+
+      {/* P2-4: Cart warnings banner */}
+      {serverCart && serverCart.warnings.length > 0 && (
+        <CartWarningsBanner warnings={serverCart.warnings} fmt={fmt} />
+      )}
 
       <div className="grid gap-8 lg:grid-cols-3">
         {/* Items */}
@@ -75,7 +86,7 @@ export default function CartPage() {
           </ul>
         </div>
 
-        {/* Summary */}
+        {/* Summary — P2-1: serverCart.pricing authoritative */}
         <div className="h-fit rounded-lg border p-6">
           <h2 className="mb-4 font-semibold">Order Summary</h2>
           <div className="space-y-2 text-sm">
@@ -89,10 +100,22 @@ export default function CartPage() {
                 {shipping === 0 ? "FREE" : fmt(shipping)}
               </span>
             </div>
-            {shipping > 0 && (
+            {freeShippingGap !== null && freeShippingGap > 0 && (
               <p className="text-xs text-muted-foreground">
-                Add {fmt(FREE_SHIPPING_THRESHOLD - sub)} more for free shipping
+                Add {fmt(freeShippingGap)} more for free shipping
               </p>
+            )}
+            {tax > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{taxLabel ?? "Tax"}</span>
+                <span>{fmt(tax)}</span>
+              </div>
+            )}
+            {serverCart?.pricing.discount != null && serverCart.pricing.discount > 0 && (
+              <div className="flex justify-between text-green-600">
+                <span>Discount</span>
+                <span>-{fmt(serverCart.pricing.discount)}</span>
+              </div>
             )}
           </div>
           <Separator className="my-4" />
@@ -108,6 +131,68 @@ export default function CartPage() {
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Cart warnings banner (P2-4) ───────────────────────────────────────────────
+
+function cartWarningMessage(w: CartWarning, fmt: (n: number) => string): { text: string; isError: boolean } {
+  switch (w.type) {
+    case "PRICE_CHANGED":
+      return {
+        text: `Price for "${w.product_name}" changed from ${fmt(w.old_price)} to ${fmt(w.new_price)}.`,
+        isError: false,
+      };
+    case "LOW_STOCK":
+      return {
+        text: `Only ${w.available} left in stock for "${w.product_name}".`,
+        isError: false,
+      };
+    case "ITEM_UNAVAILABLE":
+      return {
+        text: `"${w.product_name}" is no longer available and has been removed from your cart.`,
+        isError: true,
+      };
+    case "QUANTITY_ADJUSTED":
+      return {
+        text: `Quantity for "${w.product_name}" adjusted from ${w.old_qty} to ${w.new_qty} due to stock limits.`,
+        isError: false,
+      };
+    case "COUPON_REMOVED":
+      return { text: `Coupon removed: ${w.reason}`, isError: false };
+    case "CART_EXPIRED":
+      return { text: "Your cart has expired. Please add items again.", isError: true };
+    default:
+      return { text: "Your cart has an issue — please review before checkout.", isError: false };
+  }
+}
+
+interface WarningsBannerProps {
+  warnings: CartWarning[];
+  fmt: (n: number) => string;
+}
+
+function CartWarningsBanner({ warnings, fmt }: WarningsBannerProps) {
+  if (warnings.length === 0) return null;
+  return (
+    <div className="mb-6 space-y-2">
+      {warnings.map((w, i) => {
+        const { text, isError } = cartWarningMessage(w, fmt);
+        return (
+          <div
+            key={i}
+            className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${
+              isError
+                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                : "border-amber-300/50 bg-amber-50 text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-300"
+            }`}
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{text}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -260,6 +260,33 @@ export default function CheckoutPage() {
       return;
     }
 
+    // P2-6: Validate cart server-side before placing order.
+    // This catches stale items, out-of-stock variants, and expired carts
+    // before we charge the customer.
+    const cartId = serverCartId ?? serverCart?.id;
+    if (cartId) {
+      try {
+        const validateRes = await fetch(`/api/cart/${cartId}/validate`);
+        if (!validateRes.ok) {
+          const err = await validateRes.json().catch(() => ({})) as { error?: string };
+          toast.error(err.error ?? "Cart validation failed. Please review your cart and try again.");
+          submittingRef.current = false;
+          return;
+        }
+        const { data: cartSummary } = await validateRes.json() as { data: { warnings?: Array<{ type: string }> } };
+        const blockingWarningTypes = ["ITEM_UNAVAILABLE", "CART_EXPIRED"];
+        const blockingWarnings = cartSummary?.warnings?.filter((w) => blockingWarningTypes.includes(w.type)) ?? [];
+        if (blockingWarnings.length > 0) {
+          toast.error("Some cart items are unavailable. Please review your cart before placing the order.");
+          submittingRef.current = false;
+          return;
+        }
+      } catch {
+        // Validation is a best-effort guard — network failure should not block checkout
+        console.warn("[checkout] cart validate request failed — proceeding");
+      }
+    }
+
     setIsPlacingOrder(true);
     createOrder(
       {
@@ -343,6 +370,40 @@ export default function CheckoutPage() {
   return (
     <div className="container py-8">
       <h1 className="mb-8 text-2xl font-bold">Checkout</h1>
+
+      {/* P2-4: Cart warnings at top of checkout */}
+      {serverCart && serverCart.warnings.length > 0 && (
+        <div className="mb-6 space-y-2">
+          {serverCart.warnings.map((w, i) => {
+            const isError = w.type === "ITEM_UNAVAILABLE" || w.type === "CART_EXPIRED";
+            const text =
+              w.type === "PRICE_CHANGED"
+                ? `Price for "${w.product_name}" has changed.`
+                : w.type === "LOW_STOCK"
+                  ? `Limited stock: only ${w.available} left for "${w.product_name}".`
+                  : w.type === "ITEM_UNAVAILABLE"
+                    ? `"${w.product_name}" is no longer available.`
+                    : w.type === "QUANTITY_ADJUSTED"
+                      ? `Quantity for "${w.product_name}" adjusted to ${w.new_qty}.`
+                      : w.type === "COUPON_REMOVED"
+                        ? `Coupon removed: ${w.reason}`
+                        : "Your cart has expired. Please add items again.";
+            return (
+              <div
+                key={i}
+                className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${
+                  isError
+                    ? "border-destructive/30 bg-destructive/10 text-destructive"
+                    : "border-amber-300/50 bg-amber-50 text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-300"
+                }`}
+              >
+                <span>{text}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit(handlePlaceOrder)}>
         <div className="grid gap-8 lg:grid-cols-3">
           {/* ── Left column ────────────────────────────────────────────── */}

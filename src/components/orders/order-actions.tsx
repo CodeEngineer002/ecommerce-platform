@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { XCircle } from "lucide-react";
 
 import { useCancelOrder } from "@/features/orders/hooks/use-orders";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ export function OrderActions({ orderId, canCancel, canReturn, returnHref }: Prop
       router.refresh();
     } catch {
       // error toast handled by the hook
+      // Keep dialog open so user can retry or close manually
     }
   }
 
@@ -58,8 +60,14 @@ export function OrderActions({ orderId, canCancel, canReturn, returnHref }: Prop
         )}
       </div>
 
-      {/* Cancel confirmation dialog */}
-      <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
+      {/* Cancel confirmation dialog — blocked from closing while in progress */}
+      <Dialog
+        open={cancelOpen}
+        onOpenChange={(open) => {
+          if (cancelling) return; // prevent close during processing
+          setCancelOpen(open);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Cancel Order</DialogTitle>
@@ -77,18 +85,54 @@ export function OrderActions({ orderId, canCancel, canReturn, returnHref }: Prop
               placeholder="Tell us why you want to cancel..."
               value={cancelReason}
               onChange={(e) => setCancelReason(e.target.value)}
+              disabled={cancelling}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelOpen(false)} disabled={cancelling}>
+            <Button
+              variant="outline"
+              onClick={() => setCancelOpen(false)}
+              disabled={cancelling}
+            >
               Keep Order
             </Button>
-            <Button variant="destructive" onClick={handleCancel} disabled={cancelling}>
+            <Button
+              variant="destructive"
+              onClick={handleCancel}
+              disabled={cancelling}
+            >
               {cancelling ? "Cancelling…" : "Cancel Order"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Full-screen overlay — shown while cancellation is processing */}
+      {cancelling && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-5 rounded-2xl border bg-background p-10 shadow-2xl">
+            <div className="relative flex h-20 w-20 items-center justify-center">
+              <span className="absolute inset-0 animate-spin rounded-full border-4 border-destructive/20 border-t-destructive" />
+              <XCircle className="h-9 w-9 text-destructive" />
+            </div>
+            <div className="space-y-1.5 text-center">
+              <p className="text-lg font-semibold">Cancelling your order…</p>
+              <p className="text-sm text-muted-foreground">
+                Please wait. Don&apos;t close this page.
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="h-2 w-2 animate-bounce rounded-full bg-destructive"
+                  style={{ animationDelay: `${i * 0.15}s` }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

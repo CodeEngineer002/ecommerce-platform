@@ -4,6 +4,7 @@ import { isOrderCancellable } from "@/domain/order/order-state-machine";
 import { sendOrderCancelledEmail } from "@/lib/email";
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
 import { AuthError, NotFoundError, OrderStateError, UnauthorizedOrderAccessError } from "@/lib/errors";
+import { withRateLimit } from "@/lib/rate-limit";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
 const schema = z.object({
@@ -14,8 +15,10 @@ const schema = z.object({
  * DELETE /api/orders/[id]
  * Customer-facing cancel endpoint. Validates ownership + cancellable state,
  * calls cancel_order RPC, then fires a cancellation email (fire-and-forget).
+ * Rate limited: 5 cancellations per minute per IP (P2-9).
  */
-export const DELETE = withApiHandler(
+export const DELETE = withRateLimit(
+  withApiHandler(
   async (request: Request, context: { params: Promise<{ id: string }> }) => {
     const userClient = await createClient();
     const {
@@ -87,5 +90,6 @@ export const DELETE = withApiHandler(
     }
 
     return apiSuccess({ success: true });
-  },
+  }),
+  { limit: 5, windowMs: 60_000, routeKey: "orders:cancel" },
 );

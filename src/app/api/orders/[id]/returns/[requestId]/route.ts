@@ -7,6 +7,7 @@ import {
   ReturnCancelNotAllowedError,
   UnauthorizedOrderAccessError,
 } from "@/lib/errors";
+import { withRateLimit } from "@/lib/rate-limit";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
 const cancelSchema = z.object({
@@ -15,7 +16,9 @@ const cancelSchema = z.object({
 
 // DELETE /api/orders/[id]/returns/[requestId]  — customer cancels a return/replacement request
 // Only allowed while request is still in 'requested' state.
-export const DELETE = withApiHandler(
+// Rate limited: 5 cancellations per minute per IP (P2-9)
+export const DELETE = withRateLimit(
+  withApiHandler(
   async (request: Request, context: { params: Promise<{ id: string; requestId: string }> }) => {
     const userClient = await createClient();
     const {
@@ -83,7 +86,8 @@ export const DELETE = withApiHandler(
     }
 
     return apiSuccess({ success: true });
-  },
+  }),
+  { limit: 5, windowMs: 60_000, routeKey: "orders:returns:cancel" },
 );
 
 // GET /api/orders/[id]/returns/[requestId]  — fetch a single return/replacement request
