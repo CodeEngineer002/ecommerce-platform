@@ -41,9 +41,11 @@ const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   delivered:             ["return_requested", "replacement_requested", "refund_requested",
                           "partially_returned", "partially_refunded", "refunded"],
   cancelled:             ["refunded"],
-  // failed is a terminal state — no transitions out.
-  // Customers who want to retry must start a new checkout (new order).
-  failed:                [],
+  // failed → pending_payment: allows an admin to re-queue a failed payment for
+  // retry without creating a new order. Matches the DB update_order_status()
+  // allowed transitions (migrations/00038, 00044). Customers always create a
+  // new order; this path is reserved for admin/system use only.
+  failed:                ["pending_payment"],
   return_requested:      ["return_approved", "return_rejected"],
   return_approved:       ["return_in_transit"],
   // After rejection the DB automatically reverts order to 'delivered' so the

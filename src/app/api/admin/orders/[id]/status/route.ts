@@ -51,46 +51,70 @@ export const PATCH = withApiHandler(
     const { id } = await context.params;
     const { status, reason } = schema.parse(await request.json());
 
-    const { error } = await db.rpc("update_order_status", {
-      p_order_id:   id,
-      p_new_status: status,
-      p_changed_by: user.id,
-      p_reason:     reason ?? undefined,
-      p_source:     "admin_override",
-    });
+    // ── ARCH-6: Use cancel_order RPC for cancellations (consistent audit trail)
+    // cancel_order is atomic — handles inventory release, COD payment cancellation,
+    // and writes order_events with proper actor_type, giving a uniform audit trail
+    // identical to the customer-cancel path. For non-cancel status changes we still
+    // use update_order_status which handles all other lifecycle transitions.
+    if (status === "cancelled") {
+      const { error: cancelErr } = await db.rpc("cancel_order", {
+        p_order_id:   id,
+        p_user_id:    user.id,
+        p_reason:     reason ?? "Cancelled by admin",
+        p_actor_type: "admin",
+      });
 
-    if (error) {
-      const msg = error.message ?? "";
-      if (error.code === "P0006" || msg.includes("Invalid status transition")) {
-        throw new OrderStateError(msg || `Invalid status transition to '${status}'`);
+      if (cancelErr) {
+        const msg = cancelErr.message ?? "";
+        if (cancelErr.code === "P0006" || msg.includes("cannot be cancelled")) {
+          throw new OrderStateError(msg || "Order cannot be cancelled");
+        }
+        if (cancelErr.code === "P0005" || msg.includes("not found")) {
+          throw new NotFoundError("Order not found");
+        }
+        throw new Error(msg || "Failed to cancel order");
       }
-      if (error.code === "P0005" || msg.includes("not found")) {
-        throw new NotFoundError("Order not found");
+    } else {
+      const { error } = await db.rpc("update_order_status", {
+        p_order_id:   id,
+        p_new_status: status,
+        p_changed_by: user.id,
+        p_reason:     reason ?? undefined,
+        p_source:     "admin_override",
+      });
+
+      if (error) {
+        const msg = error.message ?? "";
+        if (error.code === "P0006" || msg.includes("Invalid status transition")) {
+          throw new OrderStateError(msg || `Invalid status transition to '${status}'`);
+        }
+        if (error.code === "P0005" || msg.includes("not found")) {
+          throw new NotFoundError("Order not found");
+        }
+        throw new Error(msg || "Failed to update order status");
       }
-      throw new Error(msg || "Failed to update order status");
+
+      // cancel_failed path: COD payment cleanup for failed orders
+      // (cancel_order already handles this for cancelled; only needed for failed)
+      if (status === "failed") {
+        void db.rpc("cancel_cod_payment", {
+          p_order_id: id,
+          p_actor_id: user.id,
+          p_reason:   reason ?? "Order failed before COD collection",
+        }).then(({ error: rpcErr }) => {
+          if (rpcErr) {
+            console.error("[admin/orders/status] cancel_cod_payment (failed) error:", rpcErr.message);
+          }
+        });
+      }
     }
 
     await logAdminAction(ctx, request, {
-      action: "update_order_status",
+      action: status === "cancelled" ? "cancel_order" : "update_order_status",
       entityType: "order",
       entityId: id,
       metadata: { status, reason },
     });
-
-    // ── COD: cancel payment when order cancelled/failed before delivery ───────
-    // If the order is cancelled or failed and payment method is COD, the payment
-    // should be set to 'cancelled' — no cash was collected, no refund needed.
-    if (status === "cancelled" || status === "failed") {
-      void db.rpc("cancel_cod_payment", {
-        p_order_id: id,
-        p_actor_id: user.id,
-        p_reason:   reason ?? `Order ${status} before COD collection`,
-      }).then(({ error: rpcErr }) => {
-        if (rpcErr) {
-          console.error("[admin/orders/status] cancel_cod_payment failed:", rpcErr.message);
-        }
-      });
-    }
 
     // ── Fire-and-forget emails for key order lifecycle stages ────────────────
     const EMAIL_STATUSES = ["shipped", "out_for_delivery", "delivered", "cancelled"] as const;

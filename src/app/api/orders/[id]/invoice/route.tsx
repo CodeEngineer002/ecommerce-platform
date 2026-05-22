@@ -41,6 +41,23 @@ export async function GET(
     if (!order) throw new NotFoundError("Order not found");
     if (order.user_id !== user.id) throw new UnauthorizedOrderAccessError();
 
+    // Invoice is only valid for orders that have been paid / confirmed.
+    // Cancelled, draft, or unpaid COD orders must not have an invoice generated.
+    const INVOICE_ELIGIBLE_STATUSES = new Set([
+      "confirmed", "processing", "packed", "shipped", "out_for_delivery",
+      "delivered", "return_requested", "return_approved", "return_rejected",
+      "return_in_transit", "returned", "replacement_requested",
+      "replacement_approved", "replacement_rejected", "replacement_shipped",
+      "replacement_delivered", "refund_requested", "refund_processing",
+      "partially_returned", "partially_refunded", "refunded",
+    ]);
+    if (!INVOICE_ELIGIBLE_STATUSES.has(order.status)) {
+      return NextResponse.json(
+        { data: null, error: { message: "Invoice is not available for this order status." } },
+        { status: 422 },
+      );
+    }
+
     const { data: items } = await db
       .from("order_items")
       .select("product_name, variant_name, sku, quantity, unit_price, tax_amount, total")

@@ -146,7 +146,7 @@ function ReturnCard({ request: r, onUpdate }: { request: ReturnRequest; onUpdate
               </p>
             )}
           </div>
-          <StatusBadge status={r.status} />
+          <StatusBadge status={r.status as Parameters<typeof StatusBadge>[0]["status"]} />
         </div>
       </CardHeader>
 

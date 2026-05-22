@@ -173,9 +173,46 @@ export const POST = withRateLimit(
       }));
     }
 
+    // ── Cap cart quantities to available stock (ARCH-4) ───────────────────────
+    // buildCartSummary() computes effectiveQty client-side but never persists it.
+    // Here we enforce the same cap server-side so create_order_atomic never
+    // receives a quantity that would exceed available inventory, preventing a
+    // confusing RPC failure downstream.
+    {
+      const capVariantIds = cartItems.map((i) => i.variant_id);
+      const { data: stockRows } = await db
+        .from("inventory_levels")
+        .select("variant_id, quantity, reserved")
+        .in("variant_id", capVariantIds);
+
+      if (stockRows && stockRows.length > 0) {
+        const availMap = new Map<string, number>(
+          stockRows.map((r) => [r.variant_id, Math.max(0, r.quantity - r.reserved)]),
+        );
+
+        const capped = cartItems
+          .map((item) => {
+            const avail = availMap.get(item.variant_id);
+            if (avail === undefined) return item; // no stock row → let RPC handle it
+            return { ...item, quantity: Math.min(item.quantity, avail) };
+          })
+          .filter((item) => item.quantity > 0);
+
+        if (capped.length === 0) {
+          end();
+          return apiError(
+            "All items in your cart are currently out of stock.",
+            409,
+            "OUT_OF_STOCK",
+          );
+        }
+        cartItems = capped;
+      }
+    }
+
     // ── Fetch authoritative prices — never trust client-submitted prices ──────
-    // inventory is NOT fetched here; the hard stock check happens inside
-    // create_order_atomic with a SELECT FOR UPDATE lock.
+    // The hard per-row lock still happens inside create_order_atomic; the cap
+    // above is an early-exit safety net, not a replacement for the RPC guard.
     // Also fetch sku, options (color/size) and product_code for order snapshot.
     const variantIds = cartItems.map((i) => i.variant_id);
     const { data: variantsRaw, error: variantError } = await db

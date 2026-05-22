@@ -78,7 +78,7 @@ const ALLOWED_TRANSITIONS: Record<string, OrderStatus[]> = {
                             "refunded", "partially_refunded"],
   partially_refunded:      ["refunded"],
   cancelled:               ["refunded"],
-  failed:                  [],
+  failed:                  ["pending_payment"],
   return_rejected:         [],
   replacement_rejected:    [],
   replacement_delivered:   [],

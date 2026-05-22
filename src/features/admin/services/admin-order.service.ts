@@ -1,8 +1,8 @@
 import type { OrderStatus } from "@/domain/order/order-state-machine";
 import { apiFetch } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
-import type { Database } from "@/types/database.types";
 import type { OrderWithItems } from "@/types";
+import type { Database } from "@/types/database.types";
 
 type DbOrderStatus = Database["public"]["Enums"]["order_status"];
 
@@ -13,6 +13,13 @@ export interface AdminOrderFilters {
   sortDir?: "asc" | "desc";
 }
 
+/**
+ * Fetches paginated + filtered orders using the Supabase browser client.
+ * Data is protected by the "Admins manage all orders" RLS policy which requires
+ * the user to be authenticated with role = admin | super_admin.
+ * Fine-grained ORDERS_READ RBAC is enforced separately on the API action routes
+ * (status, fulfillment, cod-collect, etc.) via requireAdminPermission.
+ */
 export async function adminGetOrders(page = 1, pageSize = 20, filters: AdminOrderFilters = {}) {
   const supabase = createClient();
   const from = (page - 1) * pageSize;
@@ -35,8 +42,8 @@ export async function adminGetOrders(page = 1, pageSize = 20, filters: AdminOrde
   if (search?.trim()) {
     query = query.ilike("order_number", `%${search.trim()}%`);
   }
-  if (status) {
-    query = query.eq("status", status as DbOrderStatus);
+  if (status?.trim()) {
+    query = query.eq("status", status.trim() as DbOrderStatus);
   }
 
   const { data, count, error } = await query
