@@ -191,13 +191,21 @@ export default async function AdminOrderDetailPage({ params }: Props) {
   const codPending     = isCod && (payment?.status === "cod_pending_collection" || payment?.status === "pending");
   const codCollectedAt = isCod ? (payment?.metadata?.cod_collected_at as string | null ?? null) : null;
 
-  // Show COD panel when order is in a collection-eligible status
-  const codEligibleStatuses = ["out_for_delivery", "delivered", "confirmed", "processing", "packed", "shipped"];
-  // Show pending panel when COD payment is awaiting collection
+  // Statuses where COD cash can actually be collected — must match the API route
+  // (cod-collect/route.ts eligibleStatuses) and the DB RPC (confirm_cod_cash_collected
+  // v_allowed_statuses). Keeping these in sync prevents showing an action button
+  // that will always fail with an OrderStateError.
+  const COD_COLLECT_ELIGIBLE = ["out_for_delivery", "delivered"] as const;
+
+  // Statuses where the order is heading toward delivery but not yet eligible for
+  // cash collection — show an informational notice instead of the action panel.
+  const COD_IN_TRANSIT_STATUSES = ["confirmed", "processing", "packed", "shipped"];
+
   // Show collected panel only when there's a real cod_collected_at timestamp (prevents
   // erroneously-set 'succeeded' from showing the collected banner)
   const codActuallyCollected = isCod && payment?.status === "succeeded" && Boolean(codCollectedAt);
-  const showCodPanel = isCod && (codPending || codActuallyCollected) && codEligibleStatuses.includes(order.status);
+  const showCodPanel    = isCod && (codPending || codActuallyCollected) && (COD_COLLECT_ELIGIBLE as readonly string[]).includes(order.status);
+  const showCodInTransit = isCod && codPending && COD_IN_TRANSIT_STATUSES.includes(order.status);
 
   const shipping = order.shipping_address as Record<string, string> | null;
   const fmt = (n: number) => formatPrice(n);
@@ -260,6 +268,23 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               paymentStatus={payment?.status ?? "cod_pending_collection"}
               collectedAt={codCollectedAt}
             />
+          )}
+
+          {/* ── COD in-transit notice ─────────────────────────────────── */}
+          {/* Shown when order is heading toward delivery but cash collection
+              is not yet allowed (API/RPC only permits out_for_delivery/delivered).
+              Keeps admins informed without showing a button that would fail. */}
+          {showCodInTransit && (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-300">
+              <span className="mt-0.5 text-base leading-none">💰</span>
+              <div>
+                <p className="font-medium">COD — Cash collection pending</p>
+                <p className="mt-0.5 text-amber-700 dark:text-amber-400">
+                  The &ldquo;Confirm Cash Collected&rdquo; button will appear once the order
+                  is marked <strong>Out for Delivery</strong> or <strong>Delivered</strong>.
+                </p>
+              </div>
+            </div>
           )}
 
           {/* ── Tracking ──────────────────────────────────────────────── */}

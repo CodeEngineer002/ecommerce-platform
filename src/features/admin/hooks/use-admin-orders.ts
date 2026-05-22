@@ -6,6 +6,7 @@ import { toast } from "react-hot-toast";
 import { queryKeys } from "@/lib/query-keys";
 import type { OrderStatus } from "@/types";
 
+import type { AdminOrderFilters } from "../services/admin-order.service";
 import {
   adminGetOrderStats,
   adminGetOrders,
@@ -14,10 +15,10 @@ import {
 
 export const adminOrderKeys = queryKeys.adminOrders;
 
-export function useAdminOrders(page = 1) {
+export function useAdminOrders(page = 1, filters: AdminOrderFilters = {}) {
   return useQuery({
-    queryKey: queryKeys.adminOrders.list(page),
-    queryFn: () => adminGetOrders(page),
+    queryKey: queryKeys.adminOrders.list(page, filters as Record<string, string | undefined>),
+    queryFn: () => adminGetOrders(page, 20, filters),
     // 30s: admin sees live orders, needs fresh data
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,

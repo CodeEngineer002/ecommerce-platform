@@ -58,10 +58,20 @@ export interface CreateOrderResult {
 }
 
 export async function createOrder(payload: CheckoutPayload): Promise<CreateOrderResult> {
+  // Extract the idempotency key — it must be sent as a header, not in the
+  // request body. The API reads request.headers.get("Idempotency-Key") and
+  // ignores anything in the JSON body with that name.
+  const { idempotencyKey, ...bodyPayload } = payload;
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
+  }
+
   const res = await fetch("/api/orders/create", {
     method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify(payload),
+    headers,
+    body:    JSON.stringify(bodyPayload),
   });
 
   if (!res.ok) {

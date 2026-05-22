@@ -68,6 +68,20 @@ export const DELETE = withRateLimit(
       throw new Error(msg || "Failed to cancel order");
     }
 
+    // BUG-3 fix: cancel COD payment when customer cancels.
+    // cancel_cod_payment is idempotent and a no-op for non-COD orders
+    // (it only acts when provider = 'cod' exists for the order), so it is
+    // safe to call unconditionally without fetching the payment provider first.
+    void db.rpc("cancel_cod_payment", {
+      p_order_id: orderId,
+      p_actor_id: user.id,
+      p_reason:   reason ?? "Order cancelled by customer",
+    }).then(({ error: codErr }) => {
+      if (codErr) {
+        console.error("[orders/cancel] cancel_cod_payment failed:", codErr.message);
+      }
+    });
+
     // Fire cancellation email — fetch customer profile for email + name
     const { data: profile } = await db
       .from("profiles")

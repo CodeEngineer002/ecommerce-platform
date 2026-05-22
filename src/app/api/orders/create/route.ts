@@ -113,10 +113,15 @@ export const POST = withRateLimit(
     // checkout path — no server cart to load from).
     let cartItems = clientCartItems;
 
+    // MISSING-2 fix: also read coupon_code from the cart row so that coupons
+    // applied via the cart page are automatically carried into the order even
+    // if the customer never re-typed them in the checkout form.
+    let cartCouponCode: string | null = null;
+
     if (cartId) {
       const { data: cartRow, error: cartFetchError } = await db
         .from("carts")
-        .select("id, user_id, status")
+        .select("id, user_id, status, coupon_code")
         .eq("id", cartId)
         .maybeSingle();
 
@@ -140,6 +145,9 @@ export const POST = withRateLimit(
           "CART_NOT_ACTIVE",
         );
       }
+
+      // Capture cart-level coupon before it is cleared on conversion.
+      cartCouponCode = cartRow.coupon_code ?? null;
 
       // Load items from the server — never trust client-submitted cartItems when
       // we have an authoritative server cart.
@@ -198,11 +206,17 @@ export const POST = withRateLimit(
       };
     });
 
+    // ── Resolve effective coupon code ────────────────────────────────────────
+    // Priority: explicit form input > cart-applied coupon.
+    // This ensures coupons applied via the cart page are never silently dropped
+    // when the customer doesn't re-type them in the checkout form (MISSING-2).
+    const effectiveCouponCode = couponCode?.trim().toUpperCase() || cartCouponCode?.trim().toUpperCase() || undefined;
+
     // ── Validate coupon (soft pre-flight — hard lock happens inside RPC) ──────
     let couponData = null;
-    if (couponCode) {
+    if (effectiveCouponCode) {
       const subtotal = lineItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-      couponData = await validateCoupon(couponCode, subtotal, user.id);
+      couponData = await validateCoupon(effectiveCouponCode, subtotal, user.id);
     }
 
     // ── Resolve country-specific tax rate from shipping address ───────────────
@@ -247,7 +261,7 @@ export const POST = withRateLimit(
       p_discount: pricing.discount,
       p_total: pricing.total,
       p_coupon_id: (couponData?.id ?? null) as string,
-      p_coupon_code: couponCode?.toUpperCase() ?? "",
+      p_coupon_code: effectiveCouponCode ?? "",
       p_shipping_address: shippingAddress,
       p_billing_address: billingAddress ?? shippingAddress,
       p_notes: notes ?? "",
@@ -423,6 +437,20 @@ export const POST = withRateLimit(
       .from("payments")
       .update({ provider_order_id: intent.providerOrderId })
       .eq("id", payment!.id);
+
+    // BUG-4 fix: move Stripe order to `pending_payment` immediately.
+    // `cancel_unpaid_orders` cancels `pending_payment` orders after 30 min,
+    // but only cancels `pending` orders after 24 h. Without this transition,
+    // an abandoned Stripe checkout would hold inventory for 24 h instead of 30 min.
+    // State machine allows: pending → pending_payment (see migration 00038).
+    // When payment succeeds the webhook moves pending_payment → confirmed.
+    await db.rpc("update_order_status", {
+      p_order_id:   orderId as string,
+      p_new_status: "pending_payment",
+      p_changed_by: user.id,
+      p_reason:     "Stripe payment intent created — awaiting payment confirmation",
+      p_source:     "customer_action",
+    });
 
     const responseBody = {
       orderId,

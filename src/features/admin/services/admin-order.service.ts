@@ -1,23 +1,46 @@
 import type { OrderStatus } from "@/domain/order/order-state-machine";
 import { apiFetch } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
+import type { Database } from "@/types/database.types";
 import type { OrderWithItems } from "@/types";
 
-export async function adminGetOrders(page = 1, pageSize = 20) {
+type DbOrderStatus = Database["public"]["Enums"]["order_status"];
+
+export interface AdminOrderFilters {
+  search?:  string;
+  status?:  string;
+  sortBy?:  "created_at" | "total" | "order_number";
+  sortDir?: "asc" | "desc";
+}
+
+export async function adminGetOrders(page = 1, pageSize = 20, filters: AdminOrderFilters = {}) {
   const supabase = createClient();
   const from = (page - 1) * pageSize;
+  const {
+    search,
+    status,
+    sortBy  = "created_at",
+    sortDir = "desc",
+  } = filters;
 
-  const { data, count, error } = await supabase
+  let query = supabase
     .from("orders")
     .select(
-      `
-      *,
+      `*,
       items:order_items(*),
-      payment:payments(*)
-    `,
+      payment:payments(*)`,
       { count: "exact" },
-    )
-    .order("created_at", { ascending: false })
+    );
+
+  if (search?.trim()) {
+    query = query.ilike("order_number", `%${search.trim()}%`);
+  }
+  if (status) {
+    query = query.eq("status", status as DbOrderStatus);
+  }
+
+  const { data, count, error } = await query
+    .order(sortBy, { ascending: sortDir === "asc" })
     .range(from, from + pageSize - 1);
 
   if (error) throw error;

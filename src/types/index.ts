@@ -167,6 +167,14 @@ export interface CheckoutPayload {
   /** The specific cart being checked out. Used by the API to convert exactly
    *  this cart, preventing stale-cart and duplicate-order issues. */
   cartId?: string;
+  /**
+   * Client-generated UUID sent as the `Idempotency-Key` HTTP header.
+   * The server deduplicates requests with the same key so network retries
+   * and accidental double-submits never create a second order.
+   * Generated once per checkout component mount (useRef in checkout page).
+   * Stripped from the request body — only sent as a header.
+   */
+  idempotencyKey?: string;
 }
 
 export interface PriceBreakdown {

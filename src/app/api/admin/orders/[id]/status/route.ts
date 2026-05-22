@@ -3,7 +3,12 @@ import { z } from "zod";
 import { apiSuccess, withApiHandler } from "@/lib/api";
 import { PERMISSIONS } from "@/lib/admin/permissions";
 import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
-import { sendOrderCancelledEmail, sendOrderShippedEmail } from "@/lib/email";
+import {
+  sendOrderCancelledEmail,
+  sendOrderDeliveredEmail,
+  sendOrderOutForDeliveryEmail,
+  sendOrderShippedEmail,
+} from "@/lib/email";
 import { NotFoundError, OrderStateError } from "@/lib/errors";
 
 const schema = z.object({
@@ -87,8 +92,11 @@ export const PATCH = withApiHandler(
       });
     }
 
-    // ── Fire-and-forget emails for shipped / cancelled ────────────────────────
-    if (status === "shipped" || status === "cancelled") {
+    // ── Fire-and-forget emails for key order lifecycle stages ────────────────
+    const EMAIL_STATUSES = ["shipped", "out_for_delivery", "delivered", "cancelled"] as const;
+    type EmailStatus = typeof EMAIL_STATUSES[number];
+
+    if ((EMAIL_STATUSES as readonly string[]).includes(status)) {
       void (async () => {
         try {
           const { data: order } = await db
@@ -109,8 +117,10 @@ export const PATCH = withApiHandler(
           if (!toEmail) return;
           const customerName = profile?.full_name ?? toEmail;
 
-          if (status === "shipped") {
-            // Fetch the latest fulfillment to get tracking details
+          const s = status as EmailStatus;
+
+          if (s === "shipped" || s === "out_for_delivery") {
+            // Fetch latest fulfillment for tracking details
             const { data: fulfillment } = await db
               .from("order_fulfillments")
               .select("tracking_number, tracking_url, carrier, estimated_delivery")
@@ -119,23 +129,43 @@ export const PATCH = withApiHandler(
               .limit(1)
               .maybeSingle();
 
-            await sendOrderShippedEmail({
-              to: toEmail,
+            if (s === "shipped") {
+              await sendOrderShippedEmail({
+                to:                toEmail,
+                customerName,
+                orderId:           id,
+                orderNumber:       order.order_number,
+                trackingNumber:    fulfillment?.tracking_number ?? null,
+                trackingUrl:       fulfillment?.tracking_url    ?? null,
+                carrier:           fulfillment?.carrier          ?? null,
+                estimatedDelivery: fulfillment?.estimated_delivery ?? null,
+              });
+            } else {
+              await sendOrderOutForDeliveryEmail({
+                to:            toEmail,
+                customerName,
+                orderId:       id,
+                orderNumber:   order.order_number,
+                trackingNumber: fulfillment?.tracking_number ?? null,
+                trackingUrl:    fulfillment?.tracking_url    ?? null,
+                carrier:        fulfillment?.carrier         ?? null,
+              });
+            }
+          } else if (s === "delivered") {
+            await sendOrderDeliveredEmail({
+              to:           toEmail,
               customerName,
-              orderId: id,
-              orderNumber: order.order_number,
-              trackingNumber:    fulfillment?.tracking_number ?? null,
-              trackingUrl:       fulfillment?.tracking_url ?? null,
-              carrier:           fulfillment?.carrier ?? null,
-              estimatedDelivery: fulfillment?.estimated_delivery ?? null,
+              orderId:      id,
+              orderNumber:  order.order_number,
+              deliveredAt:  new Date().toISOString(),
             });
           } else {
             await sendOrderCancelledEmail({
-              to: toEmail,
+              to:          toEmail,
               customerName,
-              orderId: id,
+              orderId:     id,
               orderNumber: order.order_number,
-              reason: reason ?? null,
+              reason:      reason ?? null,
             });
           }
         } catch (emailErr) {

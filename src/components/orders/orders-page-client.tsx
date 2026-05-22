@@ -1,50 +1,74 @@
 "use client";
 
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Package } from "lucide-react";
 
 import { EmptyState } from "@/components/feedback/empty-state";
-import { OrderCard, filterOrdersByTab, type OrderCardData } from "@/components/orders/order-card";
+import { Pagination } from "@/components/common/pagination";
+import { OrderCard, type OrderCardData } from "@/components/orders/order-card";
 import { TAB_LABELS, type OrderTab } from "@/domain/order/order-journey";
 import { formatPrice } from "@/lib/utils";
 
 interface Props {
-  orders:        OrderCardData[];
-  currencyCode:  string;
+  orders:         OrderCardData[];
+  currencyCode:   string;
   currencyLocale: string;
   /** Base path e.g. "/us/en/orders" — id appended client-side */
   ordersBasePath: string;
-  productsHref:  string;
+  productsHref:   string;
+  /** Current active tab (comes from server via URL param) */
+  activeTab:      OrderTab;
+  /** Current page number (1-indexed) */
+  page:           number;
+  /** Total pages for the current tab */
+  totalPages:     number;
+  /** Per-tab order counts (always the full total, not just current page) */
+  tabCounts:      Record<OrderTab, number>;
 }
 
 const TABS: OrderTab[] = ["all", "active", "delivered", "cancelled", "returns", "refunds"];
 
-export function OrdersPageClient({ orders, currencyCode, currencyLocale, ordersBasePath, productsHref }: Props) {
+export function OrdersPageClient({
+  orders,
+  currencyCode,
+  currencyLocale,
+  ordersBasePath,
+  productsHref,
+  activeTab,
+  page,
+  totalPages,
+  tabCounts,
+}: Props) {
+  const router   = useRouter();
+  const pathname = usePathname();
+
   const fmt        = (n: number) => formatPrice(n, currencyCode, currencyLocale);
   const orderHref  = (id: string) => `${ordersBasePath}/${id}`;
   const returnHref = (id: string) => `${ordersBasePath}/${id}/return`;
-  const [activeTab, setActiveTab] = useState<OrderTab>("all");
 
-  // Compute per-tab counts
-  const counts = TABS.reduce<Record<OrderTab, number>>(
-    (acc, tab) => {
-      acc[tab] = filterOrdersByTab(orders, tab).length;
-      return acc;
-    },
-    { all: 0, active: 0, delivered: 0, cancelled: 0, returns: 0, refunds: 0 },
-  );
+  function goToTab(tab: OrderTab) {
+    const params = new URLSearchParams();
+    params.set("tab", tab);
+    params.set("page", "1");
+    router.push(`${pathname}?${params.toString()}`);
+  }
 
-  const visible = filterOrdersByTab(orders, activeTab);
+  function goToPage(p: number) {
+    const params = new URLSearchParams();
+    params.set("tab", activeTab);
+    params.set("page", String(p));
+    router.push(`${pathname}?${params.toString()}`);
+  }
 
   return (
     <div>
       {/* Tab bar */}
       <div className="mb-6 overflow-x-auto">
         <div className="flex gap-1 border-b min-w-max">
-          {TABS.filter((t) => t === "all" || counts[t] > 0).map((tab) => (
+          {TABS.filter((t) => t === "all" || tabCounts[t] > 0).map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => goToTab(tab)}
               className={`relative px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab
                   ? "text-primary border-b-2 border-primary -mb-px"
@@ -52,7 +76,7 @@ export function OrdersPageClient({ orders, currencyCode, currencyLocale, ordersB
               }`}
             >
               {TAB_LABELS[tab]}
-              {counts[tab] > 0 && (
+              {tabCounts[tab] > 0 && (
                 <span
                   className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
                     activeTab === tab
@@ -60,7 +84,7 @@ export function OrdersPageClient({ orders, currencyCode, currencyLocale, ordersB
                       : "bg-muted text-muted-foreground"
                   }`}
                 >
-                  {counts[tab]}
+                  {tabCounts[tab]}
                 </span>
               )}
             </button>
@@ -69,20 +93,20 @@ export function OrdersPageClient({ orders, currencyCode, currencyLocale, ordersB
       </div>
 
       {/* Order list */}
-      {visible.length === 0 ? (
+      {orders.length === 0 ? (
         <EmptyState
           icon={Package}
           title={activeTab === "all" ? "No orders yet" : `No ${TAB_LABELS[activeTab].toLowerCase()}`}
           description={
             activeTab === "all"
               ? "Once you place an order, it will appear here."
-              : `You have no orders in this category.`
+              : "You have no orders in this category."
           }
           action={activeTab === "all" ? { label: "Start Shopping", href: productsHref } : undefined}
         />
       ) : (
         <div className="space-y-4">
-          {visible.map((order) => (
+          {orders.map((order) => (
             <OrderCard
               key={order.id}
               order={order}
@@ -91,6 +115,17 @@ export function OrdersPageClient({ orders, currencyCode, currencyLocale, ordersB
               fmt={fmt}
             />
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="mt-8 flex justify-center">
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={goToPage}
+          />
         </div>
       )}
     </div>

@@ -132,6 +132,12 @@ export default function CheckoutPage() {
   // Sync guard — prevents a second tap/click from firing a second mutation
   // before React re-renders with isPending=true (async state timing gap).
   const submittingRef = useRef(false);
+  // Stable idempotency key — generated once per checkout component mount.
+  // The same key is reused on every retry/re-render so the server can detect
+  // duplicates and return the cached order instead of creating a second one.
+  // A new key is produced on page refresh (component remount) which correctly
+  // represents a fresh order intent.
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
   // Stays true from the moment we submit until navigation away (or on error).
   // Prevents the "Your cart is empty" flash that occurs when the cart is
   // cleared server-side before the success-page navigation completes.
@@ -293,10 +299,15 @@ export default function CheckoutPage() {
         cartItems:        cartItemsPayload,
         shippingAddress:  toAddressPayload(selectedShipping),
         billingAddress:   toAddressPayload(billingAddress!),
-        couponCode:       data.couponCode,
+        // MISSING-2 fix: prefer explicit form input; fall back to coupon applied
+        // on the cart page so the discount is never silently dropped.
+        couponCode:       data.couponCode || serverCart?.coupon_code || undefined,
         paymentProvider:  data.paymentProvider,
         notes:            data.notes,
         cartId:           serverCartId ?? serverCart?.id ?? undefined,
+        // Stable key for server-side deduplication — same on retries,
+        // different on each new component mount (fresh checkout intent).
+        idempotencyKey:   idempotencyKeyRef.current,
       },
       {
         onError:   () => { setIsPlacingOrder(false); submittingRef.current = false; },

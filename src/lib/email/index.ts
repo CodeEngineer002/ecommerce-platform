@@ -12,6 +12,8 @@ import * as React from "react";
 import { sendEmail } from "./email-service";
 import { OrderConfirmationEmail } from "./templates/order-confirmation";
 import { OrderShippedEmail } from "./templates/order-shipped";
+import { OrderDeliveredEmail } from "./templates/order-delivered";
+import { OrderOutForDeliveryEmail } from "./templates/order-out-for-delivery";
 import { OrderCancelledEmail } from "./templates/order-cancelled";
 import { RefundProcessedEmail } from "./templates/refund-processed";
 import { ReturnApprovedEmail } from "./templates/return-approved";
@@ -20,10 +22,16 @@ import { ReturnPickupUpdateEmail, type PickupStage } from "./templates/return-pi
 import type { EmailOrderSummary } from "./templates/types";
 
 const STORE_NAME = process.env.STORE_NAME ?? "ShopNest";
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+const APP_URL    = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
-function orderUrl(orderId: string) {
-  return `${APP_URL}/orders/${orderId}`;
+// Default locale used in email CTAs. The middleware would redirect /orders/...
+// to the locale path anyway, but using a direct locale link avoids the extra
+// round-trip and ensures the user lands on the right regional store.
+const DEFAULT_EMAIL_COUNTRY = process.env.NEXT_PUBLIC_DEFAULT_COUNTRY ?? "in";
+const DEFAULT_EMAIL_LANG    = process.env.NEXT_PUBLIC_DEFAULT_LANG    ?? "en";
+
+function orderUrl(orderId: string, country = DEFAULT_EMAIL_COUNTRY, lang = DEFAULT_EMAIL_LANG) {
+  return `${APP_URL}/${country}/${lang}/orders/${orderId}`;
 }
 
 // ── Order Confirmation ────────────────────────────────────────────────────────
@@ -70,6 +78,54 @@ export async function sendOrderShippedEmail(opts: {
       carrier: opts.carrier,
       estimatedDelivery: opts.estimatedDelivery,
       storeName: STORE_NAME,
+    }),
+  });
+}
+
+// ── Order Out for Delivery ────────────────────────────────────────────────────
+
+export async function sendOrderOutForDeliveryEmail(opts: {
+  to:              string;
+  customerName:    string;
+  orderId:         string;
+  orderNumber:     string;
+  trackingNumber?: string | null;
+  trackingUrl?:    string | null;
+  carrier?:        string | null;
+}): Promise<void> {
+  void sendEmail({
+    to:      opts.to,
+    subject: `Your order #${opts.orderNumber} is out for delivery today — ${STORE_NAME}`,
+    react:   React.createElement(OrderOutForDeliveryEmail, {
+      customerName:   opts.customerName,
+      orderNumber:    opts.orderNumber,
+      orderUrl:       orderUrl(opts.orderId),
+      trackingNumber: opts.trackingNumber,
+      trackingUrl:    opts.trackingUrl,
+      carrier:        opts.carrier,
+      storeName:      STORE_NAME,
+    }),
+  });
+}
+
+// ── Order Delivered ───────────────────────────────────────────────────────────
+
+export async function sendOrderDeliveredEmail(opts: {
+  to:           string;
+  customerName: string;
+  orderId:      string;
+  orderNumber:  string;
+  deliveredAt?: string | null;
+}): Promise<void> {
+  void sendEmail({
+    to:      opts.to,
+    subject: `Your order #${opts.orderNumber} has been delivered — ${STORE_NAME}`,
+    react:   React.createElement(OrderDeliveredEmail, {
+      customerName: opts.customerName,
+      orderNumber:  opts.orderNumber,
+      orderUrl:     orderUrl(opts.orderId),
+      deliveredAt:  opts.deliveredAt,
+      storeName:    STORE_NAME,
     }),
   });
 }
