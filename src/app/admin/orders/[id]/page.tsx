@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CodCollectionPanel } from "@/components/admin/orders/cod-collection-panel";
+import { DeliveryRefusalPanel } from "@/components/admin/orders/delivery-refusal-panel";
 import { AdminTrackingForm } from "@/components/admin/orders/tracking-form";
 import type { FulfillmentData } from "@/components/admin/orders/tracking-form";
 import { AdminReturnActions } from "@/components/admin/orders/return-actions";
@@ -269,6 +270,12 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               collectedAt={codCollectedAt}
             />
           )}
+
+          {/* ── Delivery Refusal / RTO Panel (Phase 2.1) ─────────────────
+              Visible only when status ∈ {shipped, out_for_delivery,
+              delivery_refused, return_to_origin}; the panel renders nothing
+              otherwise. */}
+          <DeliveryRefusalPanel orderId={orderId} status={order.status} />
 
           {/* ── COD in-transit notice ─────────────────────────────────── */}
           {/* Shown when order is heading toward delivery but cash collection

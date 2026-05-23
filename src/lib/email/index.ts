@@ -15,6 +15,8 @@ import { OrderShippedEmail } from "./templates/order-shipped";
 import { OrderDeliveredEmail } from "./templates/order-delivered";
 import { OrderOutForDeliveryEmail } from "./templates/order-out-for-delivery";
 import { OrderCancelledEmail } from "./templates/order-cancelled";
+import { OrderRefusedEmail } from "./templates/order-refused";
+import { CodCollectedEmail } from "./templates/cod-collected";
 import { RefundProcessedEmail } from "./templates/refund-processed";
 import { ReturnApprovedEmail } from "./templates/return-approved";
 import { ReturnRejectedEmail } from "./templates/return-rejected";
@@ -152,6 +154,54 @@ export async function sendOrderCancelledEmail(opts: {
       refundAmount: opts.refundAmount,
       currencyCode: opts.currencyCode,
       storeName: STORE_NAME,
+    }),
+  });
+}
+
+// ── Order Delivery Refused (Phase 2.1) ────────────────────────────────────────
+
+export async function sendOrderRefusedEmail(opts: {
+  to: string;
+  customerName: string;
+  orderId: string;
+  orderNumber: string;
+  reason?: string | null;
+}): Promise<void> {
+  void sendEmail({
+    to: opts.to,
+    subject: `Update on order #${opts.orderNumber} — delivery refused — ${STORE_NAME}`,
+    react: React.createElement(OrderRefusedEmail, {
+      customerName: opts.customerName,
+      orderNumber:  opts.orderNumber,
+      orderUrl:     orderUrl(opts.orderId),
+      reason:       opts.reason,
+      storeName:    STORE_NAME,
+    }),
+  });
+}
+
+// ── COD Cash Collected (Phase 2.2) ────────────────────────────────────────────
+
+export async function sendCodCollectedEmail(opts: {
+  to: string;
+  customerName: string;
+  orderId: string;
+  orderNumber: string;
+  amount: number;
+  currencyCode?: string;
+  collectedAt?: string | null;
+}): Promise<void> {
+  void sendEmail({
+    to: opts.to,
+    subject: `Payment received for order #${opts.orderNumber} — ${STORE_NAME}`,
+    react: React.createElement(CodCollectedEmail, {
+      customerName: opts.customerName,
+      orderNumber:  opts.orderNumber,
+      orderUrl:     orderUrl(opts.orderId),
+      amount:       opts.amount,
+      currencyCode: opts.currencyCode,
+      collectedAt:  opts.collectedAt,
+      storeName:    STORE_NAME,
     }),
   });
 }

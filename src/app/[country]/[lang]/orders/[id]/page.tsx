@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { CodDueBanner } from "@/components/orders/cod-due-banner";
 import { OrderActions } from "@/components/orders/order-actions";
 import { OrderTimeline } from "@/components/orders/order-timeline";
 import { ReturnCancelButton } from "@/components/orders/return-cancel-button";
@@ -608,6 +609,16 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
               <span>Total</span>
               <span>{fmt(order.total)}</span>
             </div>
+            {order.payment?.provider === "cod" &&
+             order.payment?.status === "cod_pending_collection" && (
+              <>
+                <Separator />
+                <CodDueBanner
+                  amount={Number(order.total)}
+                  currencyCode={order.currency ?? "INR"}
+                />
+              </>
+            )}
             {order.payment && (
               <>
                 <Separator />

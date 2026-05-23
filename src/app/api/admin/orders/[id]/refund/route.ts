@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { calculateRefund } from "@/domain/order/refund-calculator";
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
+import { idempotencyCheck, idempotencyStore } from "@/lib/api/idempotency";
 import { PERMISSIONS } from "@/lib/admin/permissions";
 import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
 import { CURRENCY } from "@/lib/constants";
@@ -28,6 +29,13 @@ export const POST = withApiHandler(
     const { user, db } = ctx;
 
     const { id: orderId } = await context.params;
+
+    // Phase 3.2 — idempotency: refund is money-flowing; a duplicate request
+    // could call the gateway twice. The gateway has its own protection but
+    // request-level cache prevents the second gateway hit entirely.
+    const idempKey = request.headers.get("Idempotency-Key");
+    const cached   = await idempotencyCheck(db, "refund", idempKey);
+    if (cached) return apiSuccess(cached);
 
     const body: unknown = await request.json();
     const parsed = schema.safeParse(body);
@@ -114,12 +122,22 @@ export const POST = withApiHandler(
       throw new RefundNotAllowedError(err instanceof Error ? err.message : "Invalid refund request");
     }
 
-    type Payment = { id: string; provider: string; provider_order_id?: string };
+    type Payment = { id: string; provider: string; status: string; provider_order_id?: string };
     const payment = Array.isArray(order.payment)
       ? (order.payment[0] as Payment | undefined)
       : (order.payment as Payment | null);
 
     if (!payment) throw new RefundNotAllowedError("No payment found for this order");
+
+    // Phase 1.4 guard: a COD order whose cash was never collected has no money
+    // to refund. The correct admin action is to cancel the order, which releases
+    // inventory and marks payment cancelled — not to "refund" zero.
+    if (payment.provider === "cod" && payment.status !== "succeeded") {
+      throw new RefundNotAllowedError(
+        "Cannot refund a COD order with no successful cash collection. " +
+        "Cancel the order instead.",
+      );
+    }
 
     // Call payment gateway (skip for COD)
     if (payment.provider !== "cod") {
@@ -210,11 +228,13 @@ export const POST = withApiHandler(
       }
     })();
 
-    return apiSuccess({
+    const result = {
       refundId,
       amount:     calculation.totalRefund,
       refundType: calculation.refundType,
       currency:   CURRENCY,
-    });
+    };
+    await idempotencyStore(db, "refund", idempKey, result);
+    return apiSuccess(result);
   },
 );

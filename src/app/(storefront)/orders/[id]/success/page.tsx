@@ -1,8 +1,10 @@
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 
+import { CodDueBanner } from "@/components/orders/cod-due-banner";
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/constants";
+import { createClient } from "@/lib/supabase/server";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -10,6 +12,19 @@ interface Props {
 
 export default async function OrderSuccessPage({ params }: Props) {
   const { id } = await params;
+
+  // Minimal fetch so we can show the COD-due banner on first paint after
+  // checkout. Failure here must not break the success page.
+  const supabase = await createClient();
+  const { data: order } = await supabase
+    .from("orders")
+    .select("total, currency, payments(provider, status)")
+    .eq("id", id)
+    .maybeSingle();
+
+  const payment = Array.isArray(order?.payments) ? order?.payments[0] : null;
+  const showCodBanner =
+    payment?.provider === "cod" && payment?.status === "cod_pending_collection";
 
   return (
     <div className="container flex min-h-[60vh] flex-col items-center justify-center py-16 text-center">
@@ -21,6 +36,16 @@ export default async function OrderSuccessPage({ params }: Props) {
         Thank you for your purchase. We&apos;ve received your order and will process it shortly.
         You&apos;ll receive a confirmation email soon.
       </p>
+
+      {showCodBanner && order && (
+        <div className="mt-6 w-full max-w-md text-left">
+          <CodDueBanner
+            amount={Number(order.total)}
+            currencyCode={order.currency ?? "INR"}
+          />
+        </div>
+      )}
+
       <div className="mt-8 flex gap-4">
         <Button asChild>
           <Link href={ROUTES.order(id)}>View Order</Link>

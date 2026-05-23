@@ -11,6 +11,8 @@ export type OrderStatus =
   | "shipped"                // handed to carrier
   | "out_for_delivery"       // last-mile delivery in progress
   | "delivered"              // confirmed delivery
+  | "delivery_refused"       // customer refused the package at the door (Phase 2.1)
+  | "return_to_origin"       // refused package is on its way back to warehouse (Phase 2.1)
   | "cancelled"              // cancelled before fulfilment
   | "failed"                 // payment or processing failure
   | "return_requested"       // customer submitted return request
@@ -36,8 +38,12 @@ const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   confirmed:             ["processing", "cancelled"],
   processing:            ["packed", "shipped", "cancelled"],
   packed:                ["shipped", "cancelled"],
-  shipped:               ["out_for_delivery", "delivered", "cancelled"],
-  out_for_delivery:      ["delivered"],
+  shipped:               ["out_for_delivery", "delivered", "cancelled", "delivery_refused"],
+  out_for_delivery:      ["delivered", "delivery_refused"],
+  // Refusal lifecycle (Phase 2.1): out_for_delivery|shipped → delivery_refused
+  // → (return_to_origin) → cancelled. The cancel transition releases inventory.
+  delivery_refused:      ["return_to_origin", "cancelled"],
+  return_to_origin:      ["cancelled"],
   delivered:             ["return_requested", "replacement_requested", "refund_requested",
                           "partially_returned", "partially_refunded", "refunded"],
   cancelled:             ["refunded"],

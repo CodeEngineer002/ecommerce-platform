@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { CodDueBanner } from "@/components/orders/cod-due-banner";
 import { OrderActions } from "@/components/orders/order-actions";
 import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
@@ -282,9 +283,14 @@ export default async function OrderDetailPage({ params }: Props) {
             {order.payment && (
               <>
                 <Separator />
-                <p className="text-xs capitalize text-muted-foreground">
-                  Payment: {order.payment.provider} • {order.payment.status}
-                </p>
+                {order.payment.provider === "cod" &&
+                 order.payment.status === "cod_pending_collection" ? (
+                  <CodDueBanner amount={Number(order.total)} compact />
+                ) : (
+                  <p className="text-xs capitalize text-muted-foreground">
+                    Payment: {order.payment.provider} • {order.payment.status}
+                  </p>
+                )}
               </>
             )}
           </CardContent>

@@ -6,6 +6,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowDownAZ,
   ArrowUpAZ,
+  Banknote,
+  Download,
   Loader2,
   Search,
   SlidersHorizontal,
@@ -202,6 +204,88 @@ function buildColumns(
   ];
 }
 
+// ─── Filter chip button ───────────────────────────────────────────────────────
+
+function ChipButton({
+  active, onClick, children, icon,
+}: {
+  active:   boolean;
+  onClick:  () => void;
+  children: React.ReactNode;
+  icon?:    React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border bg-background text-muted-foreground hover:text-foreground hover:bg-muted",
+      ].join(" ")}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+// ─── CSV export ───────────────────────────────────────────────────────────────
+
+function csvEscape(value: unknown): string {
+  if (value == null) return "";
+  const s = String(value);
+  if (/[",\n]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function exportOrdersToCsv(orders: OrderWithItems[]) {
+  if (orders.length === 0) return;
+
+  const headers = [
+    "order_number", "created_at", "status",
+    "customer_name", "phone", "shipping_address",
+    "payment_provider", "payment_status",
+    "total", "currency", "items_count",
+  ];
+
+  const rows = orders.map((o) => {
+    const addr = (o.shipping_address ?? {}) as Record<string, string>;
+    const payment = (o as OrderWithItems & {
+      payment?: { provider?: string; status?: string };
+    }).payment ?? null;
+    const fullAddress = [addr.line1, addr.line2, addr.city, addr.state, addr.postal_code]
+      .filter(Boolean).join(", ");
+
+    return [
+      o.order_number,
+      o.created_at,
+      o.status,
+      addr.full_name ?? addr.name ?? "",
+      addr.phone ?? "",
+      fullAddress,
+      payment?.provider ?? "",
+      payment?.status ?? "",
+      o.total,
+      (o as OrderWithItems & { currency?: string }).currency ?? "INR",
+      o.items.length,
+    ];
+  });
+
+  const csv = [headers.join(","), ...rows.map((r) => r.map(csvEscape).join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  const date = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `orders-manifest-${date}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function useUrlFilters() {
@@ -209,11 +293,13 @@ function useUrlFilters() {
   const pathname  = usePathname();
   const params    = useSearchParams();
 
-  const search  = params.get("q")      ?? "";
-  const status  = params.get("status") ?? "";
-  const sortBy  = (params.get("sort")  ?? "created_at") as AdminOrderFilters["sortBy"];
-  const sortDir = (params.get("dir")   ?? "desc")        as AdminOrderFilters["sortDir"];
-  const page    = Math.max(1, parseInt(params.get("page") ?? "1", 10));
+  const search   = params.get("q")       ?? "";
+  const status   = params.get("status")  ?? "";
+  const payment  = (params.get("payment")  ?? "") as "" | "cod" | "stripe" | "razorpay";
+  const payState = (params.get("paystat") ?? "") as "" | NonNullable<AdminOrderFilters["paymentStatus"]>;
+  const sortBy   = (params.get("sort")  ?? "created_at") as AdminOrderFilters["sortBy"];
+  const sortDir  = (params.get("dir")   ?? "desc")        as AdminOrderFilters["sortDir"];
+  const page     = Math.max(1, parseInt(params.get("page") ?? "1", 10));
 
   const push = useCallback(
     (patch: Record<string, string>) => {
@@ -229,19 +315,19 @@ function useUrlFilters() {
     [params, pathname, router],
   );
 
-  const activeFilterCount = [search, status].filter(Boolean).length;
+  const activeFilterCount = [search, status, payment, payState].filter(Boolean).length;
 
   const clearAll = useCallback(() => {
     router.push(pathname, { scroll: false });
   }, [router, pathname]);
 
-  return { search, status, sortBy, sortDir, page, push, activeFilterCount, clearAll };
+  return { search, status, payment, payState, sortBy, sortDir, page, push, activeFilterCount, clearAll };
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminOrdersPage() {
-  const { search, status, sortBy, sortDir, page, push, activeFilterCount, clearAll } =
+  const { search, status, payment, payState, sortBy, sortDir, page, push, activeFilterCount, clearAll } =
     useUrlFilters();
 
   // Local input state for the search box so typing feels instant.
@@ -261,10 +347,12 @@ export default function AdminOrdersPage() {
   }
 
   const filters: AdminOrderFilters = {
-    search:  search  || undefined,
-    status:  status  || undefined,
-    sortBy:  sortBy  || "created_at",
-    sortDir: sortDir || "desc",
+    search:          search   || undefined,
+    status:          status   || undefined,
+    paymentProvider: payment  || undefined,
+    paymentStatus:   payState || undefined,
+    sortBy:          sortBy   || "created_at",
+    sortDir:         sortDir  || "desc",
   };
 
   const { data, isLoading } = useAdminOrders(page, filters);
@@ -357,6 +445,19 @@ export default function AdminOrdersPage() {
             : <><ArrowDownAZ className="h-4 w-4" /> Desc</>}
         </Button>
 
+        {/* Export current view as CSV manifest */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => exportOrdersToCsv(orders)}
+          disabled={orders.length === 0}
+          className="h-9 gap-1.5"
+          title="Export visible orders as CSV (delivery manifest)"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Export CSV
+        </Button>
+
         {/* Active filters count + clear button */}
         {activeFilterCount > 0 && (
           <Button
@@ -372,6 +473,43 @@ export default function AdminOrdersPage() {
             </Badge>
           </Button>
         )}
+      </div>
+
+      {/* ── Payment / COD filter chips ──────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 -mt-3">
+        <span className="text-xs uppercase text-muted-foreground mr-1">Payment:</span>
+        <ChipButton
+          active={!payment && !payState}
+          onClick={() => push({ payment: "", paystat: "" })}
+        >
+          All
+        </ChipButton>
+        <ChipButton
+          active={payment === "cod" && !payState}
+          onClick={() => push({ payment: "cod", paystat: "" })}
+          icon={<Banknote className="h-3 w-3" />}
+        >
+          COD
+        </ChipButton>
+        <ChipButton
+          active={payment === "cod" && payState === "cod_pending_collection"}
+          onClick={() => push({ payment: "cod", paystat: "cod_pending_collection" })}
+          icon={<Banknote className="h-3 w-3" />}
+        >
+          COD — Cash Pending
+        </ChipButton>
+        <ChipButton
+          active={payment === "cod" && payState === "succeeded"}
+          onClick={() => push({ payment: "cod", paystat: "succeeded" })}
+        >
+          COD — Collected
+        </ChipButton>
+        <ChipButton
+          active={payment === "stripe" || payment === "razorpay"}
+          onClick={() => push({ payment: "stripe", paystat: "" })}
+        >
+          Online
+        </ChipButton>
       </div>
 
       {/* ── Table ───────────────────────────────────────────────────────── */}

@@ -1,9 +1,12 @@
 import { z } from "zod";
 
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
+import { idempotencyCheck, idempotencyStore } from "@/lib/api/idempotency";
 import { PERMISSIONS } from "@/lib/admin/permissions";
 import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
+import { sendCodCollectedEmail } from "@/lib/email";
 import { NotFoundError, OrderStateError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
 
 const schema = z.object({
   amount_collected: z.number().positive("Amount must be positive"),
@@ -35,6 +38,14 @@ export const POST = withApiHandler(
 
     const { id: orderId } = await context.params;
 
+    // Request-level idempotency (Phase 3.2). Stacked on top of the RPC's
+    // own "already succeeded → no-op" guard: this layer also prevents
+    // duplicate emails/audit-log entries on a retry that landed before
+    // the first request finished.
+    const idempKey = request.headers.get("Idempotency-Key");
+    const cached   = await idempotencyCheck(db, "cod-collect", idempKey);
+    if (cached) return apiSuccess(cached);
+
     const body: unknown = await request.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
@@ -50,7 +61,7 @@ export const POST = withApiHandler(
     // Fetch order to verify it exists
     const { data: order } = await db
       .from("orders")
-      .select("id, order_number, status, total")
+      .select("id, order_number, status, total, user_id, shipping_address")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -59,7 +70,7 @@ export const POST = withApiHandler(
     // Fetch COD payment record
     const { data: payment } = await db
       .from("payments")
-      .select("id, provider, status, amount")
+      .select("id, provider, status, amount, currency")
       .eq("order_id", orderId)
       .eq("provider", "cod")
       .order("created_at", { ascending: false })
@@ -83,7 +94,9 @@ export const POST = withApiHandler(
         entityId: orderId,
         metadata: { order_number: order.order_number, notes: "Already collected — no-op" },
       });
-      return apiSuccess({ orderId, paymentId: payment.id, alreadyCollected: true });
+      const result = { orderId, paymentId: payment.id, alreadyCollected: true };
+      await idempotencyStore(db, "cod-collect", idempKey, result);
+      return apiSuccess(result);
     }
 
     // Guard: order must be in eligible status
@@ -111,7 +124,7 @@ export const POST = withApiHandler(
       p_amount:     collectedAmount,
       p_actor_id:   user.id,
       p_actor_role: "admin",
-      p_notes:      notes ?? null,
+      p_notes:      notes,
     });
 
     if (rpcError) {
@@ -125,6 +138,8 @@ export const POST = withApiHandler(
       throw new Error(msg || "Failed to confirm COD cash collection");
     }
 
+    const collectedAt = new Date().toISOString();
+
     // Log admin action for backoffice audit trail
     await logAdminAction(ctx, request, {
       action: "cod_cash_collected",
@@ -137,12 +152,43 @@ export const POST = withApiHandler(
       },
     });
 
-    return apiSuccess({
+    // Notify customer (fire-and-forget, failure must not block the API).
+    try {
+      const { data: profile } = await db
+        .from("profiles")
+        .select("email, full_name")
+        .eq("id", order.user_id ?? "")
+        .maybeSingle();
+
+      const addr = (order.shipping_address ?? {}) as { name?: string };
+      const customerName = profile?.full_name ?? addr.name ?? "Customer";
+
+      if (profile?.email) {
+        await sendCodCollectedEmail({
+          to:           profile.email,
+          customerName,
+          orderId,
+          orderNumber:  order.order_number,
+          amount:       collectedAmount,
+          currencyCode: payment.currency ?? "INR",
+          collectedAt,
+        });
+      }
+    } catch (err) {
+      logger.warn("sendCodCollectedEmail failed", {
+        orderId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    const result = {
       orderId,
       paymentId:        payment.id,
       amountCollected:  collectedAmount,
-      collectedAt:      new Date().toISOString(),
+      collectedAt,
       collectedBy:      user.id,
-    });
+    };
+    await idempotencyStore(db, "cod-collect", idempKey, result);
+    return apiSuccess(result);
   },
 );

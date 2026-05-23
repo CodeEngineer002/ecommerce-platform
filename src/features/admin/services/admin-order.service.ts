@@ -7,10 +7,13 @@ import type { Database } from "@/types/database.types";
 type DbOrderStatus = Database["public"]["Enums"]["order_status"];
 
 export interface AdminOrderFilters {
-  search?:  string;
-  status?:  string;
-  sortBy?:  "created_at" | "total" | "order_number";
-  sortDir?: "asc" | "desc";
+  search?:          string;
+  status?:          string;
+  paymentProvider?: "cod" | "stripe" | "razorpay";
+  /** Filter by payment lifecycle state; useful for "COD cash pending" view. */
+  paymentStatus?:   "cod_pending_collection" | "succeeded" | "pending" | "cancelled" | "failed" | "refunded";
+  sortBy?:          "created_at" | "total" | "order_number";
+  sortDir?:         "asc" | "desc";
 }
 
 /**
@@ -26,16 +29,24 @@ export async function adminGetOrders(page = 1, pageSize = 20, filters: AdminOrde
   const {
     search,
     status,
+    paymentProvider,
+    paymentStatus,
     sortBy  = "created_at",
     sortDir = "desc",
   } = filters;
+
+  // Inner-join payments only when filtering on payment columns, so
+  // unfiltered queries continue to return orders that have no payment row
+  // (e.g. replacement orders).
+  const filteringByPayment = Boolean(paymentProvider || paymentStatus);
+  const paymentSelect = filteringByPayment ? "payment:payments!inner(*)" : "payment:payments(*)";
 
   let query = supabase
     .from("orders")
     .select(
       `*,
       items:order_items(*),
-      payment:payments(*)`,
+      ${paymentSelect}`,
       { count: "exact" },
     );
 
@@ -44,6 +55,12 @@ export async function adminGetOrders(page = 1, pageSize = 20, filters: AdminOrde
   }
   if (status?.trim()) {
     query = query.eq("status", status.trim() as DbOrderStatus);
+  }
+  if (paymentProvider) {
+    query = query.eq("payments.provider", paymentProvider);
+  }
+  if (paymentStatus) {
+    query = query.eq("payments.status", paymentStatus);
   }
 
   const { data, count, error } = await query

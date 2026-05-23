@@ -19,6 +19,10 @@
     {
       "path": "/api/jobs/expire-abandoned-carts",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/jobs/aggregate-cod",
+      "schedule": "0 2 * * *"
     }
   ]
 }

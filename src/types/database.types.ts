@@ -2041,6 +2041,7 @@ export type Database = {
       }
       inventory_movements: {
         Row: {
+          adjustment_reason: string | null
           created_at: string
           created_by: string | null
           id: string
@@ -2055,6 +2056,7 @@ export type Database = {
           variant_id: string
         }
         Insert: {
+          adjustment_reason?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -2069,6 +2071,7 @@ export type Database = {
           variant_id: string
         }
         Update: {
+          adjustment_reason?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -2737,15 +2740,25 @@ export type Database = {
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "order_fulfillments_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "order_returns"
+            referencedColumns: ["id"]
+          },
         ]
       }
       order_items: {
         Row: {
+          color: string | null
           discount_amount: number
           id: string
           order_id: string
+          product_code: string | null
           product_name: string
           quantity: number
+          size: string | null
           sku: string | null
           snapshot: Json | null
           tax_amount: number
@@ -2755,11 +2768,14 @@ export type Database = {
           variant_name: string | null
         }
         Insert: {
+          color?: string | null
           discount_amount?: number
           id?: string
           order_id: string
+          product_code?: string | null
           product_name: string
           quantity: number
+          size?: string | null
           sku?: string | null
           snapshot?: Json | null
           tax_amount?: number
@@ -2769,11 +2785,14 @@ export type Database = {
           variant_name?: string | null
         }
         Update: {
+          color?: string | null
           discount_amount?: number
           id?: string
           order_id?: string
+          product_code?: string | null
           product_name?: string
           quantity?: number
+          size?: string | null
           sku?: string | null
           snapshot?: Json | null
           tax_amount?: number
@@ -2950,6 +2969,7 @@ export type Database = {
           discount: number
           fulfillment_status: Database["public"]["Enums"]["fulfillment_status"]
           id: string
+          inventory_committed_at: string | null
           notes: string | null
           order_number: string
           order_type: string
@@ -2973,6 +2993,7 @@ export type Database = {
           discount?: number
           fulfillment_status?: Database["public"]["Enums"]["fulfillment_status"]
           id?: string
+          inventory_committed_at?: string | null
           notes?: string | null
           order_number: string
           order_type?: string
@@ -2996,6 +3017,7 @@ export type Database = {
           discount?: number
           fulfillment_status?: Database["public"]["Enums"]["fulfillment_status"]
           id?: string
+          inventory_committed_at?: string | null
           notes?: string | null
           order_number?: string
           order_type?: string
@@ -3019,34 +3041,60 @@ export type Database = {
             referencedRelation: "coupons"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "orders_parent_order_id_fkey"
+            columns: ["parent_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_replacement_request_id_fkey"
+            columns: ["replacement_request_id"]
+            isOneToOne: false
+            referencedRelation: "order_returns"
+            referencedColumns: ["id"]
+          },
         ]
       }
       payment_events: {
         Row: {
+          actor_id: string | null
+          actor_role: string | null
           amount: number | null
           created_at: string
           event_type: string
           id: string
+          metadata: Json | null
+          notes: string | null
           order_id: string
           payload: Json | null
           payment_id: string
           provider: string
         }
         Insert: {
+          actor_id?: string | null
+          actor_role?: string | null
           amount?: number | null
           created_at?: string
           event_type: string
           id?: string
+          metadata?: Json | null
+          notes?: string | null
           order_id: string
           payload?: Json | null
           payment_id: string
           provider: string
         }
         Update: {
+          actor_id?: string | null
+          actor_role?: string | null
           amount?: number | null
           created_at?: string
           event_type?: string
           id?: string
+          metadata?: Json | null
+          notes?: string | null
           order_id?: string
           payload?: Json | null
           payment_id?: string
@@ -3557,36 +3605,51 @@ export type Database = {
       }
       product_variants: {
         Row: {
+          barcode: string | null
+          color_code: string | null
           created_at: string
           id: string
           is_active: boolean
+          is_default: boolean
           name: string
           options: Json
           price: number | null
           product_id: string
+          size_code: string | null
           sku: string | null
+          supplier_sku: string | null
           updated_at: string
         }
         Insert: {
+          barcode?: string | null
+          color_code?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
+          is_default?: boolean
           name: string
           options?: Json
           price?: number | null
           product_id: string
+          size_code?: string | null
           sku?: string | null
+          supplier_sku?: string | null
           updated_at?: string
         }
         Update: {
+          barcode?: string | null
+          color_code?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
+          is_default?: boolean
           name?: string
           options?: Json
           price?: number | null
           product_id?: string
+          size_code?: string | null
           sku?: string | null
+          supplier_sku?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3611,20 +3674,27 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           description: string | null
+          fulfillment_type: string | null
+          height_cm: number | null
           id: string
           is_active: boolean
           is_digital: boolean
           is_featured: boolean
+          is_returnable: boolean
+          length_cm: number | null
           meta_image: string | null
           name: string
+          product_code: string | null
           seo_desc: string | null
           seo_title: string | null
           short_desc: string | null
           sku: string | null
           slug: string
           tags: string[] | null
+          tax_class: string | null
           updated_at: string
           weight: number | null
+          width_cm: number | null
         }
         Insert: {
           available_country_ids?: string[]
@@ -3637,20 +3707,27 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           description?: string | null
+          fulfillment_type?: string | null
+          height_cm?: number | null
           id?: string
           is_active?: boolean
           is_digital?: boolean
           is_featured?: boolean
+          is_returnable?: boolean
+          length_cm?: number | null
           meta_image?: string | null
           name: string
+          product_code?: string | null
           seo_desc?: string | null
           seo_title?: string | null
           short_desc?: string | null
           sku?: string | null
           slug: string
           tags?: string[] | null
+          tax_class?: string | null
           updated_at?: string
           weight?: number | null
+          width_cm?: number | null
         }
         Update: {
           available_country_ids?: string[]
@@ -3663,20 +3740,27 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           description?: string | null
+          fulfillment_type?: string | null
+          height_cm?: number | null
           id?: string
           is_active?: boolean
           is_digital?: boolean
           is_featured?: boolean
+          is_returnable?: boolean
+          length_cm?: number | null
           meta_image?: string | null
           name?: string
+          product_code?: string | null
           seo_desc?: string | null
           seo_title?: string | null
           short_desc?: string | null
           sku?: string | null
           slug?: string
           tags?: string[] | null
+          tax_class?: string | null
           updated_at?: string
           weight?: number | null
+          width_cm?: number | null
         }
         Relationships: [
           {
@@ -4889,31 +4973,22 @@ export type Database = {
         }
         Returns: string
       }
-      approve_return: {
-        Args: { p_admin_id: string; p_note?: string; p_return_id: string; p_force_create?: boolean }
-        Returns: undefined
-      }
-      check_replacement_inventory: {
-        Args: { p_return_id: string }
-        Returns: Json
-      }
-      restock_returned_items: {
-        Args: { p_return_id: string; p_warehouse_id?: string; p_admin_id?: string }
-        Returns: undefined
-      }
-      mark_return_pickup_scheduled: {
-        Args: { p_return_id: string; p_actor_id?: string; p_note?: string }
-        Returns: undefined
-      }
-      mark_return_collected: {
-        Args: { p_return_id: string; p_actor_id?: string; p_actor_type?: string; p_note?: string }
-        Returns: undefined
-      }
-      mark_return_received: {
-        Args: { p_return_id: string; p_actor_id?: string; p_warehouse_id?: string; p_note?: string }
-        Returns: undefined
-      }
+      approve_return:
+        | {
+            Args: { p_admin_id: string; p_note?: string; p_return_id: string }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_admin_id: string
+              p_force_create?: boolean
+              p_note?: string
+              p_return_id: string
+            }
+            Returns: undefined
+          }
       auto_queue_confirmed_orders: { Args: never; Returns: number }
+      auto_queue_confirmed_orders_debug: { Args: never; Returns: number }
       available_inventory: { Args: { p_variant_id: string }; Returns: number }
       available_stock_for_country: {
         Args: { p_country_id: string; p_variant_id: string }
@@ -4932,9 +5007,25 @@ export type Database = {
         }
         Returns: undefined
       }
+      cancel_return: {
+        Args: { p_reason?: string; p_return_id: string; p_user_id: string }
+        Returns: undefined
+      }
       cancel_unpaid_orders: { Args: never; Returns: number }
+      check_replacement_inventory: {
+        Args: { p_return_id: string }
+        Returns: Json
+      }
+      close_return: {
+        Args: { p_admin_id: string; p_notes?: string; p_return_id: string }
+        Returns: undefined
+      }
       commit_inventory_for_order: {
         Args: { p_actor_id?: string; p_order_id: string }
+        Returns: undefined
+      }
+      complete_rto: {
+        Args: { p_actor_id: string; p_notes?: string; p_order_id: string }
         Returns: undefined
       }
       confirm_cod_cash_collected: {
@@ -4951,18 +5042,33 @@ export type Database = {
         Args: { p_quantity: number; p_variant_id: string }
         Returns: undefined
       }
-      create_fulfillment: {
-        Args: {
-          p_admin_id: string
-          p_carrier?: string
-          p_estimated_delivery?: string
-          p_notes?: string
-          p_order_id: string
-          p_tracking_number?: string
-          p_tracking_url?: string
-        }
-        Returns: string
-      }
+      create_fulfillment:
+        | {
+            Args: {
+              p_admin_id: string
+              p_carrier?: string
+              p_estimated_delivery?: string
+              p_notes?: string
+              p_order_id: string
+              p_tracking_number?: string
+              p_tracking_url?: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_admin_id: string
+              p_carrier?: string
+              p_estimated_delivery?: string
+              p_notes?: string
+              p_order_id: string
+              p_request_id?: string
+              p_shipment_type?: string
+              p_tracking_number?: string
+              p_tracking_url?: string
+            }
+            Returns: string
+          }
       create_order_atomic: {
         Args: {
           p_billing_address: Json
@@ -4980,6 +5086,16 @@ export type Database = {
         }
         Returns: string
       }
+      create_replacement_order:
+        | { Args: { p_admin_id: string; p_return_id: string }; Returns: string }
+        | {
+            Args: {
+              p_admin_id: string
+              p_force_create?: boolean
+              p_return_id: string
+            }
+            Returns: string
+          }
       detect_stuck_orders: { Args: never; Returns: number }
       expire_abandoned_carts: { Args: never; Returns: undefined }
       generate_order_number: { Args: never; Returns: string }
@@ -4994,6 +5110,53 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_content_manager: { Args: never; Returns: boolean }
+      mark_delivery_refused: {
+        Args: { p_actor_id: string; p_order_id: string; p_reason: string }
+        Returns: undefined
+      }
+      mark_return_accepted: {
+        Args: {
+          p_admin_id: string
+          p_notes?: string
+          p_refund_amount?: number
+          p_return_id: string
+        }
+        Returns: undefined
+      }
+      mark_return_collected: {
+        Args: {
+          p_actor_id?: string
+          p_actor_type?: string
+          p_note?: string
+          p_return_id: string
+        }
+        Returns: undefined
+      }
+      mark_return_inspected: {
+        Args: { p_admin_id: string; p_notes?: string; p_return_id: string }
+        Returns: undefined
+      }
+      mark_return_pickup_scheduled: {
+        Args: { p_actor_id?: string; p_note?: string; p_return_id: string }
+        Returns: undefined
+      }
+      mark_return_received: {
+        Args: {
+          p_actor_id?: string
+          p_note?: string
+          p_return_id: string
+          p_warehouse_id?: string
+        }
+        Returns: undefined
+      }
+      mark_return_rejected_after_inspection: {
+        Args: { p_admin_id: string; p_reason: string; p_return_id: string }
+        Returns: undefined
+      }
+      mark_rto_in_transit: {
+        Args: { p_actor_id: string; p_note?: string; p_order_id: string }
+        Returns: undefined
+      }
       merge_guest_cart: {
         Args: {
           p_guest_cart_id: string
@@ -5047,17 +5210,36 @@ export type Database = {
         Args: { p_order_id: string }
         Returns: undefined
       }
-      request_return: {
-        Args: {
-          p_items: Json
-          p_order_id: string
-          p_reason: string
-          p_user_id: string
-        }
-        Returns: string
-      }
+      request_return:
+        | {
+            Args: {
+              p_items: Json
+              p_order_id: string
+              p_reason: string
+              p_user_id: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_items: Json
+              p_order_id: string
+              p_reason: string
+              p_request_type?: string
+              p_user_id: string
+            }
+            Returns: string
+          }
       reserve_inventory: {
         Args: { p_quantity: number; p_variant_id: string }
+        Returns: undefined
+      }
+      restock_returned_items: {
+        Args: {
+          p_admin_id?: string
+          p_return_id: string
+          p_warehouse_id?: string
+        }
         Returns: undefined
       }
       show_limit: { Args: never; Returns: number }
@@ -5144,6 +5326,8 @@ export type Database = {
         | "replacement_delivered"
         | "refund_requested"
         | "refund_processing"
+        | "delivery_refused"
+        | "return_to_origin"
       payment_provider: "stripe" | "razorpay" | "cod"
       payment_status:
         | "pending"
@@ -5342,6 +5526,8 @@ export const Constants = {
         "replacement_delivered",
         "refund_requested",
         "refund_processing",
+        "delivery_refused",
+        "return_to_origin",
       ],
       payment_provider: ["stripe", "razorpay", "cod"],
       payment_status: [
