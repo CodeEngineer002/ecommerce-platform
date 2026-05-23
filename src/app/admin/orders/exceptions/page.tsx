@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
@@ -31,11 +30,17 @@ const EXCEPTION_TYPE_LABELS: Record<string, string> = {
   stuck_out_for_delivery:  "Stuck: Out for Delivery",
   stuck_return_in_transit: "Stuck: Return in Transit",
   cod_collection_overdue:  "COD Collection Overdue",
+  refund_pending:          "Refund Pending",
 };
 
 function ExceptionTypePill({ type }: { type: string }) {
   const isCod = type === "cod_collection_overdue";
-  const bg = isCod ? "bg-orange-100 text-orange-800" : "bg-yellow-100 text-yellow-800";
+  const isRefund = type === "refund_pending";
+  const bg = isCod
+    ? "bg-orange-100 text-orange-800"
+    : isRefund
+      ? "bg-purple-100 text-purple-800"
+      : "bg-yellow-100 text-yellow-800";
   return (
     <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${bg}`}>
       {EXCEPTION_TYPE_LABELS[type] ?? type}
@@ -43,31 +48,7 @@ function ExceptionTypePill({ type }: { type: string }) {
   );
 }
 
-function useExceptions(status: ExceptionStatus) {
-  const [data, setData] = useState<OrderException[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiFetch<{ data: OrderException[] }>(
-        `/api/admin/order-exceptions?status=${status}`,
-      );
-      setData(res.data ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load exceptions");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return { data, loading, error, load };
-}
-
 export default function OrderExceptionsPage() {
-  const router = useRouter();
   const [tab, setTab] = useState<ExceptionStatus>("open");
   const [exceptions, setExceptions] = useState<OrderException[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -79,7 +60,9 @@ export default function OrderExceptionsPage() {
     setLoading(true);
     setFetchError(null);
     try {
-      const res = await apiFetch<{ data: OrderException[] }>(
+      // apiFetch<T> already returns { data: T, error: null } — pass T as the
+      // payload type directly (was double-wrapped before, causing TS 2345).
+      const res = await apiFetch<OrderException[]>(
         `/api/admin/order-exceptions?status=${status}`,
       );
       setExceptions(res.data ?? []);

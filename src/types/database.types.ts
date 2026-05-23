@@ -1432,6 +1432,54 @@ export type Database = {
         }
         Relationships: []
       }
+      cod_daily_reconciliation: {
+        Row: {
+          agent_id: string | null
+          bank_deposit_amount: number | null
+          bank_deposit_ref: string | null
+          created_at: string
+          date: string
+          deposited_at: string | null
+          id: string
+          notes: string | null
+          order_count: number
+          status: string
+          total_collected: number
+          updated_at: string
+          variance_amount: number | null
+        }
+        Insert: {
+          agent_id?: string | null
+          bank_deposit_amount?: number | null
+          bank_deposit_ref?: string | null
+          created_at?: string
+          date: string
+          deposited_at?: string | null
+          id?: string
+          notes?: string | null
+          order_count?: number
+          status?: string
+          total_collected?: number
+          updated_at?: string
+          variance_amount?: number | null
+        }
+        Update: {
+          agent_id?: string | null
+          bank_deposit_amount?: number | null
+          bank_deposit_ref?: string | null
+          created_at?: string
+          date?: string
+          deposited_at?: string | null
+          id?: string
+          notes?: string | null
+          order_count?: number
+          status?: string
+          total_collected?: number
+          updated_at?: string
+          variance_amount?: number | null
+        }
+        Relationships: []
+      }
       collection_localizations: {
         Row: {
           collection_id: string
@@ -4959,6 +5007,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      aggregate_cod_collections_for_date: {
+        Args: { p_date: string }
+        Returns: number
+      }
+      aggregate_cod_collections_yesterday: { Args: never; Returns: number }
       append_tracking_event: {
         Args: {
           p_carrier_event_id?: string
@@ -4973,22 +5026,16 @@ export type Database = {
         }
         Returns: string
       }
-      approve_return:
-        | {
-            Args: { p_admin_id: string; p_note?: string; p_return_id: string }
-            Returns: undefined
-          }
-        | {
-            Args: {
-              p_admin_id: string
-              p_force_create?: boolean
-              p_note?: string
-              p_return_id: string
-            }
-            Returns: undefined
-          }
+      approve_return: {
+        Args: {
+          p_admin_id: string
+          p_force_create?: boolean
+          p_note?: string
+          p_return_id: string
+        }
+        Returns: undefined
+      }
       auto_queue_confirmed_orders: { Args: never; Returns: number }
-      auto_queue_confirmed_orders_debug: { Args: never; Returns: number }
       available_inventory: { Args: { p_variant_id: string }; Returns: number }
       available_stock_for_country: {
         Args: { p_country_id: string; p_variant_id: string }
@@ -5015,6 +5062,14 @@ export type Database = {
       check_replacement_inventory: {
         Args: { p_return_id: string }
         Returns: Json
+      }
+      check_warehouse_mode: {
+        Args: never
+        Returns: {
+          active_warehouses: number
+          message: string
+          mode: string
+        }[]
       }
       close_return: {
         Args: { p_admin_id: string; p_notes?: string; p_return_id: string }
@@ -5086,18 +5141,17 @@ export type Database = {
         }
         Returns: string
       }
-      create_replacement_order:
-        | { Args: { p_admin_id: string; p_return_id: string }; Returns: string }
-        | {
-            Args: {
-              p_admin_id: string
-              p_force_create?: boolean
-              p_return_id: string
-            }
-            Returns: string
-          }
+      create_replacement_order: {
+        Args: {
+          p_admin_id: string
+          p_force_create?: boolean
+          p_return_id: string
+        }
+        Returns: string
+      }
+      current_order_warehouse_id: { Args: never; Returns: string }
       detect_stuck_orders: { Args: never; Returns: number }
-      expire_abandoned_carts: { Args: never; Returns: undefined }
+      expire_abandoned_carts: { Args: never; Returns: number }
       generate_order_number: { Args: never; Returns: string }
       get_or_create_user_cart: {
         Args: { p_country_id?: string; p_currency?: string; p_user_id: string }
@@ -5110,6 +5164,13 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_content_manager: { Args: never; Returns: boolean }
+      mark_abandoned_carts: {
+        Args: { p_threshold_hours?: number }
+        Returns: {
+          cart_id: string
+          user_id: string
+        }[]
+      }
       mark_delivery_refused: {
         Args: { p_actor_id: string; p_order_id: string; p_reason: string }
         Returns: undefined
@@ -5256,26 +5317,16 @@ export type Database = {
         }
         Returns: undefined
       }
-      update_order_status:
-        | {
-            Args: {
-              p_changed_by?: string
-              p_new_status: Database["public"]["Enums"]["order_status"]
-              p_order_id: string
-              p_reason?: string
-              p_source?: string
-            }
-            Returns: undefined
-          }
-        | {
-            Args: {
-              p_changed_by: string
-              p_new_status: Database["public"]["Enums"]["order_status"]
-              p_order_id: string
-              p_reason?: string
-            }
-            Returns: undefined
-          }
+      update_order_status: {
+        Args: {
+          p_changed_by?: string
+          p_new_status: Database["public"]["Enums"]["order_status"]
+          p_order_id: string
+          p_reason?: string
+          p_source?: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       cart_status:

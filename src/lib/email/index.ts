@@ -16,6 +16,7 @@ import { OrderDeliveredEmail } from "./templates/order-delivered";
 import { OrderOutForDeliveryEmail } from "./templates/order-out-for-delivery";
 import { OrderCancelledEmail } from "./templates/order-cancelled";
 import { OrderRefusedEmail } from "./templates/order-refused";
+import { CartAbandonedEmail } from "./templates/cart-abandoned";
 import { CodCollectedEmail } from "./templates/cod-collected";
 import { RefundProcessedEmail } from "./templates/refund-processed";
 import { ReturnApprovedEmail } from "./templates/return-approved";
@@ -201,6 +202,26 @@ export async function sendCodCollectedEmail(opts: {
       amount:       opts.amount,
       currencyCode: opts.currencyCode,
       collectedAt:  opts.collectedAt,
+      storeName:    STORE_NAME,
+    }),
+  });
+}
+
+// ── Cart Abandoned (Path-B P1) ────────────────────────────────────────────────
+
+export async function sendCartAbandonedEmail(opts: {
+  to:           string;
+  customerName: string;
+  itemCount:    number;
+  cartUrl?:     string;
+}): Promise<void> {
+  void sendEmail({
+    to: opts.to,
+    subject: `You left items in your cart — ${STORE_NAME}`,
+    react: React.createElement(CartAbandonedEmail, {
+      customerName: opts.customerName,
+      itemCount:    opts.itemCount,
+      cartUrl:      opts.cartUrl ?? `${APP_URL}/cart`,
       storeName:    STORE_NAME,
     }),
   });
