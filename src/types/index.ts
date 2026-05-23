@@ -158,7 +158,13 @@ export interface AddressPayload {
 }
 
 export interface CheckoutPayload {
-  cartItems: CartItemWithProduct[];
+  /**
+   * Minimum the server needs — variant_id + quantity. The server re-fetches
+   * everything else (price, name, stock) atomically inside create_order_atomic
+   * so client-sent product info is ignored anyway. Was previously typed as
+   * CartItemWithProduct[] which over-specified the contract.
+   */
+  cartItems: Array<{ variant_id: string; quantity: number }>;
   shippingAddress: AddressPayload;
   billingAddress?: AddressPayload;
   couponCode?: string;

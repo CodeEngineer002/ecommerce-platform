@@ -5,7 +5,6 @@ import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
 import { idempotencyCheck, idempotencyStore } from "@/lib/api/idempotency";
 import { PERMISSIONS } from "@/lib/admin/permissions";
 import { logAdminAction, requireAdminPermission } from "@/lib/admin/with-admin-permission";
-import { CURRENCY } from "@/lib/constants";
 import { sendRefundProcessedEmail } from "@/lib/email";
 import { NotFoundError, RefundNotAllowedError } from "@/lib/errors";
 import { getPaymentProvider } from "@/lib/payment";
@@ -123,7 +122,7 @@ export const POST = withApiHandler(
       throw new RefundNotAllowedError(err instanceof Error ? err.message : "Invalid refund request");
     }
 
-    type Payment = { id: string; provider: string; status: string; provider_order_id?: string };
+    type Payment = { id: string; provider: string; status: string; currency?: string | null; provider_order_id?: string };
     const payment = Array.isArray(order.payment)
       ? (order.payment[0] as Payment | undefined)
       : (order.payment as Payment | null);
@@ -220,7 +219,7 @@ export const POST = withApiHandler(
           orderId,
           orderNumber: order.order_number,
           refundAmount: calculation.totalRefund,
-          currencyCode: CURRENCY,
+          currencyCode: payment.currency ?? "INR",
           refundType: calculation.refundType,
           reason,
         });
@@ -233,7 +232,8 @@ export const POST = withApiHandler(
       refundId,
       amount:     calculation.totalRefund,
       refundType: calculation.refundType,
-      currency:   CURRENCY,
+      // Refund in the same currency the order was paid in (was hardcoded CURRENCY).
+      currency:   payment.currency ?? "INR",
     };
     await idempotencyStore(db, "refund", idempKey, result);
     return apiSuccess(result);

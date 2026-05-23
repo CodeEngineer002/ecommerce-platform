@@ -11,7 +11,7 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { isOrderCancellable } from "@/domain/order/order-state-machine";
+import { isOrderCancellable, type OrderStatus } from "@/domain/order/order-state-machine";
 import { ORDER_JOURNEY } from "@/domain/order/order-journey";
 import { isValidCountry, isValidLanguage, type CountryCode, type LanguageCode } from "@/lib/i18n/config";
 import { REGION_CONFIGS } from "@/lib/i18n/region-config";
@@ -381,7 +381,11 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
                           </span>
                           <p className="font-medium capitalize">{r.reason}</p>
                         </div>
-                        <StatusBadge status={r.status} />
+                        {/* r.status is a return-lifecycle status (requested, approved,
+                            pickup_scheduled, …) not an OrderStatus. StatusBadge falls
+                            back to a humanised string for unknown values, so the
+                            runtime display is fine; this cast just satisfies TS. */}
+                        <StatusBadge status={r.status as OrderStatus} />
                       </div>
 
                       <p className="text-xs text-muted-foreground">
@@ -615,7 +619,7 @@ export default async function LocaleOrderDetailPage({ params }: Props) {
                 <Separator />
                 <CodDueBanner
                   amount={Number(order.total)}
-                  currencyCode={order.currency ?? "INR"}
+                  currencyCode={currencyCode}
                 />
               </>
             )}

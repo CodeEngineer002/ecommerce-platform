@@ -285,7 +285,11 @@ export default async function OrderDetailPage({ params }: Props) {
                 <Separator />
                 {order.payment.provider === "cod" &&
                  order.payment.status === "cod_pending_collection" ? (
-                  <CodDueBanner amount={Number(order.total)} compact />
+                  <CodDueBanner
+                    amount={Number(order.total)}
+                    currencyCode={order.payment.currency ?? "INR"}
+                    compact
+                  />
                 ) : (
                   <p className="text-xs capitalize text-muted-foreground">
                     Payment: {order.payment.provider} • {order.payment.status}

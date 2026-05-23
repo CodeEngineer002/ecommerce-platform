@@ -75,6 +75,23 @@ export function getRegionConfig(country: CountryCode): RegionConfig {
   return REGION_CONFIGS[country];
 }
 
+/**
+ * Resolve the active currency for a shipping country.
+ *
+ * Accepts either:
+ *   - lowercased country_id ("us", "in", "de")
+ *   - ISO alpha-2 ("US", "IN", "DE")
+ *
+ * Falls back to INR when the country isn't in our configured region set, so
+ * old/legacy orders without a recognised country always have *some* currency.
+ */
+export function getCurrencyForCountry(countryCode: string | null | undefined): string {
+  if (!countryCode) return "INR";
+  const key = countryCode.toLowerCase() as CountryCode;
+  const config = REGION_CONFIGS[key];
+  return config?.currencyCode ?? "INR";
+}
+
 export function formatPrice(
   amount: number,
   country: CountryCode,

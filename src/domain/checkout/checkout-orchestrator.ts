@@ -4,8 +4,8 @@ import { validateCart } from "@/domain/cart/cart-validator";
 import { CouponError, validateCoupon } from "@/domain/coupon/coupon-engine";
 import { calculatePricing } from "@/domain/pricing/pricing-engine";
 import type { CartPricingWarning, CouponData, OrderPricingSnapshot, PriceBreakdown } from "@/domain/pricing/types";
-import { CURRENCY } from "@/lib/constants";
 import { ValidationError } from "@/lib/errors";
+import { getCurrencyForCountry } from "@/lib/i18n/region-config";
 import { getTaxConfig } from "@/lib/tax/tax-service";
 
 export interface CheckoutItem {
@@ -95,8 +95,9 @@ export async function buildCheckoutSummary(
     }
   }
 
-  // ── Resolve country-specific tax config ───────────────────────────────────
-  const taxConfig = input.countryCode ? getTaxConfig(input.countryCode) : undefined;
+  // ── Resolve country-specific tax + currency ───────────────────────────────
+  const taxConfig    = input.countryCode ? getTaxConfig(input.countryCode) : undefined;
+  const currencyCode = getCurrencyForCountry(input.countryCode);
 
   // ── Calculate pricing ─────────────────────────────────────────────────────
   const pricing = calculatePricing(lineItems, coupon, undefined, taxConfig);
@@ -116,7 +117,7 @@ export async function buildCheckoutSummary(
 
   // ── Build immutable pricing snapshot ─────────────────────────────────────
   const pricingSnapshot: OrderPricingSnapshot = {
-    currency: CURRENCY,
+    currency: currencyCode,
     subtotal: pricing.subtotal,
     discount: pricing.discount,
     tax: pricing.tax,

@@ -4,7 +4,8 @@ import { CouponError, validateCoupon } from "@/domain/coupon/coupon-engine";
 import { calculatePricing } from "@/domain/pricing/pricing-engine";
 import type { LineItem } from "@/domain/pricing/types";
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
-import { CART_MAX_QUANTITY, CURRENCY } from "@/lib/constants";
+import { CART_MAX_QUANTITY } from "@/lib/constants";
+import { getCurrencyForCountry } from "@/lib/i18n/region-config";
 import { AuthError, InventoryError, NotFoundError } from "@/lib/errors";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { getPaymentProvider } from "@/lib/payment";
@@ -256,8 +257,9 @@ export const POST = withRateLimit(
       couponData = await validateCoupon(effectiveCouponCode, subtotal, user.id);
     }
 
-    // ── Resolve country-specific tax rate from shipping address ───────────────
-    const taxConfig = getTaxConfig(shippingAddress.country);
+    // ── Resolve country-specific tax + currency from shipping address ─────────
+    const taxConfig    = getTaxConfig(shippingAddress.country);
+    const currencyCode = getCurrencyForCountry(shippingAddress.country);
 
     // ── Calculate pricing server-side ────────────────────────────────────────
     const pricing = calculatePricing(lineItems, couponData, undefined, taxConfig);
@@ -359,7 +361,7 @@ export const POST = withRateLimit(
         provider: paymentProvider,
         status: "pending",
         amount: pricing.total,
-        currency: CURRENCY,
+        currency: currencyCode,
       })
       .select()
       .single();
@@ -427,7 +429,7 @@ export const POST = withRateLimit(
               tax: orderRow.data?.tax ?? pricing.tax,
               shipping: orderRow.data?.shipping ?? pricing.shipping,
               total: orderRow.data?.total ?? pricing.total,
-              currency_code: CURRENCY,
+              currency_code: currencyCode,
               payment_provider: "cod",
               shipping_address: {
                 full_name: addr.full_name ?? addr.first_name ?? "",
@@ -456,7 +458,7 @@ export const POST = withRateLimit(
       provider.createIntent({
         orderId: orderId as string,
         amount: pricing.total,
-        currency: CURRENCY,
+        currency: currencyCode,
         metadata: { order_id: orderId as string },
       }),
       db.from("order_events").insert({

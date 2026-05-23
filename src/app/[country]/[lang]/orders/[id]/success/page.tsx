@@ -5,6 +5,7 @@ import { CodDueBanner } from "@/components/orders/cod-due-banner";
 import { Button } from "@/components/ui/button";
 import { buildLocaleRoutes } from "@/lib/i18n/routing";
 import { isValidCountry, isValidLanguage, type CountryCode, type LanguageCode } from "@/lib/i18n/config";
+import { REGION_CONFIGS } from "@/lib/i18n/region-config";
 import { createClient } from "@/lib/supabase/server";
 
 interface Props {
@@ -24,13 +25,17 @@ export default async function OrderSuccessPage({ params }: Props) {
   const supabase = await createClient();
   const { data: order } = await supabase
     .from("orders")
-    .select("total, currency, payments(provider, status)")
+    .select("total, payments(provider, status, currency)")
     .eq("id", id)
     .maybeSingle();
 
   const payment = Array.isArray(order?.payments) ? order?.payments[0] : null;
   const showCodBanner =
     payment?.provider === "cod" && payment?.status === "cod_pending_collection";
+
+  // Prefer the recorded payment currency; fall back to the regional default
+  // for this country (orders never had a currency column).
+  const currencyCode = payment?.currency ?? REGION_CONFIGS[localeParams.country].currencyCode;
 
   return (
     <div className="container flex min-h-[60vh] flex-col items-center justify-center py-16 text-center">
@@ -47,7 +52,7 @@ export default async function OrderSuccessPage({ params }: Props) {
         <div className="mt-6 w-full max-w-md text-left">
           <CodDueBanner
             amount={Number(order.total)}
-            currencyCode={order.currency ?? "INR"}
+            currencyCode={currencyCode}
           />
         </div>
       )}

@@ -18,13 +18,16 @@ export default async function OrderSuccessPage({ params }: Props) {
   const supabase = await createClient();
   const { data: order } = await supabase
     .from("orders")
-    .select("total, currency, payments(provider, status)")
+    .select("total, payments(provider, status, currency)")
     .eq("id", id)
     .maybeSingle();
 
   const payment = Array.isArray(order?.payments) ? order?.payments[0] : null;
   const showCodBanner =
     payment?.provider === "cod" && payment?.status === "cod_pending_collection";
+  // Currency lives on payments, not orders. Default to INR for the non-localized
+  // route since this page has no country param to derive a regional default.
+  const currencyCode = payment?.currency ?? "INR";
 
   return (
     <div className="container flex min-h-[60vh] flex-col items-center justify-center py-16 text-center">
@@ -41,7 +44,7 @@ export default async function OrderSuccessPage({ params }: Props) {
         <div className="mt-6 w-full max-w-md text-left">
           <CodDueBanner
             amount={Number(order.total)}
-            currencyCode={order.currency ?? "INR"}
+            currencyCode={currencyCode}
           />
         </div>
       )}

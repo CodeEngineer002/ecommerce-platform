@@ -22,7 +22,8 @@ import { useServerCart } from "@/features/cart/hooks/use-server-cart";
 import { CheckoutAddressPanel } from "@/features/checkout/components/checkout-address-panel";
 import { StripePaymentForm } from "@/features/checkout/components/stripe-payment-form";
 import { useCreateOrder } from "@/features/orders/hooks/use-orders";
-import { ROUTES, CURRENCY } from "@/lib/constants";
+import { ROUTES } from "@/lib/constants";
+import { getCurrencyForCountry } from "@/lib/i18n/region-config";
 import { useFormatPrice } from "@/hooks/use-format-price";
 import { checkoutExtrasSchema, type CheckoutExtrasData } from "@/lib/validators";
 import { useCartStore } from "@/store/cart-store";
@@ -369,7 +370,7 @@ export default function CheckoutPage() {
             clientSecret={orderResult.clientSecret}
             orderId={orderResult.orderId}
             totalInSmallestUnit={Math.round((pricing?.total ?? 0) * 100)}
-            currency={CURRENCY}
+            currency={getCurrencyForCountry(activeCountryIso)}
           />
         </div>
       </div>
