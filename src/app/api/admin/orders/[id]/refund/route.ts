@@ -115,6 +115,7 @@ export const POST = withApiHandler(
         orderSubtotal:  order.subtotal,
         orderShipping:  order.shipping,
         orderTax:       order.tax,
+        orderDiscount:  Number(order.discount ?? 0),
         orderTotal:     order.total,
         refundShipping: refund_shipping,
       });

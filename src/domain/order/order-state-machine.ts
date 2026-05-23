@@ -67,7 +67,11 @@ const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   replacement_approved:  ["delivered"],
   replacement_rejected:  ["delivered"],
   replacement_shipped:   ["replacement_delivered"],
-  replacement_delivered: [],
+  // Path-A RR-1: legacy-flow parents stuck at replacement_delivered can be
+  // closed to 'delivered' (audit terminal). New flow handles this via the
+  // DB trigger on the replacement child order; this manual path is for
+  // backfills / cleanup operations.
+  replacement_delivered: ["delivered"],
   refund_requested:      ["refund_processing"],
   refund_processing:     ["refunded", "partially_refunded"],
   partially_returned:    ["return_requested", "replacement_requested", "refund_requested",
