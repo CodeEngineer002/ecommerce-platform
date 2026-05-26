@@ -12,6 +12,8 @@ export interface PaymentMethodOption {
   label:       string;
   description: string | null;
   sort_order:  number;
+  /** COD-only: max accepted order total in country currency. null = no cap. */
+  cod_max_amount: number | null;
 }
 
 /**
@@ -33,7 +35,7 @@ export const GET = withApiHandler(async (request: Request) => {
   const db = createServiceClient();
   const { data, error } = await db
     .from("country_payment_methods")
-    .select("method, label, description, sort_order")
+    .select("method, label, description, sort_order, cod_max_amount")
     .eq("country_code", parsed.data.country.toUpperCase())
     .eq("is_enabled", true)
     .order("sort_order", { ascending: true });

@@ -111,20 +111,34 @@ export async function apiFetch<T>(
   url: string,
   init?: RequestInit,
 ): Promise<ApiSuccess<T>> {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...init?.headers },
-    ...init,
-  });
-
-  const json = (await res.json()) as ApiResponse<T>;
-
-  if (!res.ok || json.error) {
-    throw new ApiRequestError(
-      json.error?.message ?? "Request failed",
-      res.status,
-      json.error?.code ?? "UNKNOWN",
-    );
+  // Drive the global NavigationOverlay: increment around every in-flight call
+  // so the overlay stays up while the destination page is fetching its data.
+  // Lazy import keeps this file safe to use on the server too.
+  let endApi: (() => void) | null = null;
+  if (typeof window !== "undefined") {
+    const { useNavLoadingStore } = await import("@/store/nav-loading-store");
+    useNavLoadingStore.getState().startApi();
+    endApi = () => useNavLoadingStore.getState().endApi();
   }
 
-  return json as ApiSuccess<T>;
+  try {
+    const res = await fetch(url, {
+      headers: { "Content-Type": "application/json", ...init?.headers },
+      ...init,
+    });
+
+    const json = (await res.json()) as ApiResponse<T>;
+
+    if (!res.ok || json.error) {
+      throw new ApiRequestError(
+        json.error?.message ?? "Request failed",
+        res.status,
+        json.error?.code ?? "UNKNOWN",
+      );
+    }
+
+    return json as ApiSuccess<T>;
+  } finally {
+    endApi?.();
+  }
 }

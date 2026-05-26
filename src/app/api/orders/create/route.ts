@@ -6,7 +6,6 @@ import type { LineItem } from "@/domain/pricing/types";
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
 import { CART_MAX_QUANTITY } from "@/lib/constants";
 import {
-  checkCodEligibility,
   getCurrencyForCountry,
   isCodVerificationRequired,
   resolveServiceability,
@@ -267,26 +266,26 @@ export const POST = withRateLimit(
     const currencyCode = getCurrencyForCountry(shippingAddress.country);
 
     // ── Gate: is this payment method enabled for the customer's country? ─────
-    // Country-level admin toggle (table country_payment_methods). This is the
-    // FIRST layer of payment-method availability — before amount cap, before
-    // pincode check. Lets ops disable a method without a deploy.
-    {
-      const { data: methodRow, error: methodErr } = await db
-        .from("country_payment_methods")
-        .select("is_enabled")
-        .eq("country_code", shippingAddress.country.toUpperCase())
-        .eq("method", paymentProvider)
-        .maybeSingle();
-      if (methodErr) {
-        console.warn("[orders/create] payment-method lookup failed:", methodErr.message);
-      } else if (!methodRow || !methodRow.is_enabled) {
-        return apiError(
-          `${paymentProvider === "cod" ? "Cash on Delivery" : "This payment method"} is not available for ${shippingAddress.country}. Please choose a different payment method.`,
-          422,
-          "PAYMENT_METHOD_DISABLED",
-        );
-      }
+    // Country-level admin toggle + COD cap (table country_payment_methods).
+    // This is the SINGLE source of truth for both "is this method available"
+    // and "what's the COD cap for this country" — supersedes the legacy
+    // region-config codMaxAmount field.
+    const { data: methodRow, error: methodErr } = await db
+      .from("country_payment_methods")
+      .select("is_enabled, cod_max_amount")
+      .eq("country_code", shippingAddress.country.toUpperCase())
+      .eq("method", paymentProvider)
+      .maybeSingle();
+    if (methodErr) {
+      console.warn("[orders/create] payment-method lookup failed:", methodErr.message);
+    } else if (!methodRow || !methodRow.is_enabled) {
+      return apiError(
+        `${paymentProvider === "cod" ? "Cash on Delivery" : "This payment method"} is not available for ${shippingAddress.country}. Please choose a different payment method.`,
+        422,
+        "PAYMENT_METHOD_DISABLED",
+      );
     }
+    const countryCodMaxAmount = methodRow?.cod_max_amount ?? null;
 
     // ── P0-2: pincode serviceability gate ────────────────────────────────────
     // Hierarchy:
@@ -333,25 +332,19 @@ export const POST = withRateLimit(
     // ── Calculate pricing server-side ────────────────────────────────────────
     const pricing = calculatePricing(lineItems, couponData, undefined, taxConfig);
 
-    // ── P0-1: enforce per-country COD max amount ─────────────────────────────
-    // Server is the only trusted gate. The checkout UI also disables the COD
-    // option above this threshold but a determined client could bypass that.
-    if (paymentProvider === "cod") {
-      const codCheck = checkCodEligibility(shippingAddress.country, pricing.total);
-      if (!codCheck.ok) {
-        const fields: Record<string, string[]> = {};
-        if (codCheck.maxAmount !== null) {
-          fields.maxAmount = [String(codCheck.maxAmount)];
-        }
-        return apiError(
-          codCheck.reason === "disabled"
-            ? `Cash on Delivery is not available for ${shippingAddress.country}. Please choose a prepaid payment method.`
-            : `Cash on Delivery is only available for orders up to ${codCheck.maxAmount} ${currencyCode}. Your total ${pricing.total} ${currencyCode} exceeds the limit — please choose a prepaid payment method.`,
-          422,
-          "COD_NOT_AVAILABLE",
-          fields,
-        );
-      }
+    // ── Enforce per-country COD max amount ───────────────────────────────────
+    // Cap is read from country_payment_methods.cod_max_amount (single source
+    // of truth — see migration 00070). NULL = no cap. The DB trigger also
+    // enforces this on payment INSERT as a second line of defence.
+    if (paymentProvider === "cod"
+        && countryCodMaxAmount !== null
+        && pricing.total > countryCodMaxAmount) {
+      return apiError(
+        `Cash on Delivery is only available for orders up to ${countryCodMaxAmount} ${currencyCode}. Your total ${pricing.total} ${currencyCode} exceeds the limit — please choose a prepaid payment method.`,
+        422,
+        "COD_OVER_LIMIT",
+        { maxAmount: [String(countryCodMaxAmount)] },
+      );
     }
 
     // ── Build cart items payload for atomic RPC ───────────────────────────────

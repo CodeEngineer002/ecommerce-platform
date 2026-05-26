@@ -24,7 +24,6 @@ import { StripePaymentForm } from "@/features/checkout/components/stripe-payment
 import { useCreateOrder } from "@/features/orders/hooks/use-orders";
 import { ROUTES } from "@/lib/constants";
 import {
-  checkCodEligibility,
   getCurrencyForCountry,
   resolveServiceability,
 } from "@/lib/i18n/region-config";
@@ -193,10 +192,6 @@ export default function CheckoutPage() {
   // The server is the source of truth (api/orders/create re-checks), but we
   // drive the UI here so customers see the right options instead of failing
   // at submit time.
-  // Defer pincode + serviceability eligibility derivation till after the
-  // serviceability state is declared below. We just stash the amount-based
-  // eligibility here; the combined `codAvailable` is computed lower.
-  const codEligibility = checkCodEligibility(activeCountryIso, pricing?.total ?? 0);
   const selectedPayment = watch("paymentProvider");
 
   // ── P0-2: pincode serviceability state ────────────────────────────────────
@@ -218,38 +213,16 @@ export default function CheckoutPage() {
   const codBlockedByPincode =
     serviceability.pincode !== null && !serviceability.cod_enabled;
 
-  // Single derived flag the UI cares about: COD is available iff amount-cap
-  // passes AND pincode allows it.
-  const codAvailable = codEligibility.ok && !codBlockedByPincode;
-
-  // Pre-narrowed reason so the JSX doesn't have to discriminate the union.
-  const codUnavailableReason: "disabled" | "over_limit" | "pincode" | null =
-    codEligibility.ok === false
-      ? codEligibility.reason
-      : codBlockedByPincode
-        ? "pincode"
-        : null;
-  const codMaxAmount =
-    codEligibility.ok === false ? codEligibility.maxAmount : null;
-
-  // If the customer had COD selected but it just became unavailable (amount
-  // crossed cap, pincode changed, etc.), force-switch to stripe so submit
-  // isn't a dead end.
-  useEffect(() => {
-    if (selectedPayment === "cod" && !codAvailable) {
-      setValue("paymentProvider", "stripe");
-    }
-  }, [codAvailable, selectedPayment, setValue]);
-
   // ── Per-country payment methods (admin-configurable) ──────────────────────
   // Fetched from /api/payment-methods?country=… Returns only enabled rows.
   // Drives which radios render + their labels. If a method is missing from
   // this list, it's not available in the current country at all.
   interface PaymentMethodOption {
-    method:      string;
-    label:       string;
-    description: string | null;
-    sort_order:  number;
+    method:         string;
+    label:          string;
+    description:    string | null;
+    sort_order:     number;
+    cod_max_amount: number | null;
   }
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
 
@@ -269,7 +242,10 @@ export default function CheckoutPage() {
         // works. Server re-checks at order placement.
         if (!cancelled) {
           setPaymentMethods([
-            { method: "stripe", label: "Credit / Debit Card", description: null, sort_order: 10 },
+            {
+              method: "stripe", label: "Credit / Debit Card",
+              description: null, sort_order: 10, cod_max_amount: null,
+            },
           ]);
         }
       }
@@ -279,12 +255,34 @@ export default function CheckoutPage() {
 
   // Auto-switch away from disabled methods (when the country no longer
   // enables what was selected).
-  const codInCountry    = paymentMethods.some((m) => m.method === "cod");
+  const codRow          = paymentMethods.find((m) => m.method === "cod") ?? null;
+  const codInCountry    = codRow !== null;
   const stripeInCountry = paymentMethods.some((m) => m.method === "stripe");
   useEffect(() => {
     if (selectedPayment === "cod"    && !codInCountry)    setValue("paymentProvider", "stripe");
     if (selectedPayment === "stripe" && !stripeInCountry && codInCountry) setValue("paymentProvider", "cod");
   }, [codInCountry, stripeInCountry, selectedPayment, setValue]);
+
+  // ── Combined COD availability for the radio + helper messaging ──────────
+  // Single source of truth = country_payment_methods table (delivered via
+  // /api/payment-methods). No more region-config codMaxAmount lookup —
+  // the cap is per-country, per-row, server-controlled.
+  const codMaxAmount    = codRow?.cod_max_amount ?? null;          // null = no cap
+  const codOverLimit    = codMaxAmount !== null && (pricing?.total ?? 0) > codMaxAmount;
+  const codAvailable    = codInCountry && !codBlockedByPincode && !codOverLimit;
+  const codUnavailableReason: "over_limit" | "pincode" | null =
+    !codInCountry        ? null              // radio won't render at all
+      : codOverLimit     ? "over_limit"
+      : codBlockedByPincode ? "pincode"
+      : null;
+
+  // Force-switch away if COD becomes unavailable mid-session (amount went
+  // over cap, pincode changed, etc.).
+  useEffect(() => {
+    if (selectedPayment === "cod" && !codAvailable) {
+      setValue("paymentProvider", "stripe");
+    }
+  }, [codAvailable, selectedPayment, setValue]);
 
   // ── Auto-validate on address select ───────────────────────────────────────
   // Validates immediately when the user picks a saved address,
@@ -695,11 +693,6 @@ export default function CheckoutPage() {
                                 <p className="mt-1 ml-6 text-xs text-muted-foreground">
                                   Over the COD limit of {fmt(codMaxAmount ?? 0)} for this
                                   region — please choose a prepaid method below.
-                                </p>
-                              )}
-                              {isCod && codUnavailableReason === "disabled" && (
-                                <p className="mt-1 ml-6 text-xs text-muted-foreground">
-                                  Cash on Delivery is not available in this region.
                                 </p>
                               )}
                               {isCod && codUnavailableReason === "pincode" && (

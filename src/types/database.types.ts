@@ -1716,6 +1716,7 @@ export type Database = {
       }
       country_payment_methods: {
         Row: {
+          cod_max_amount: number | null
           country_code: string
           created_at: string
           description: string | null
@@ -1727,6 +1728,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cod_max_amount?: number | null
           country_code: string
           created_at?: string
           description?: string | null
@@ -1738,6 +1740,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cod_max_amount?: number | null
           country_code?: string
           created_at?: string
           description?: string | null

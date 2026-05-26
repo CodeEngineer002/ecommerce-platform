@@ -19,7 +19,7 @@ import { useNavLoadingStore } from "@/store/nav-loading-store";
  * This prevents users from clicking other elements while a page is loading.
  */
 export function NavigationEvents() {
-  const start = useNavLoadingStore((s) => s.start);
+  const startNav = useNavLoadingStore((s) => s.startNav);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -59,12 +59,12 @@ export function NavigationEvents() {
       if (hrefPathname === pathname) return;
 
       // It's a client-side navigation to a different page — show overlay
-      start();
+      startNav();
     }
 
     document.addEventListener("click", handleClick);
     return () => document.removeEventListener("click", handleClick);
-  }, [start, pathname]);
+  }, [startNav, pathname]);
 
   return null;
 }

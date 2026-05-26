@@ -44,12 +44,14 @@ export const GET = withApiHandler(async (request: Request) => {
 // provider type is a developer task: update the CHECK + ship integration code.
 
 const createSchema = z.object({
-  country_code: z.string().min(2).max(3),
-  method:       z.enum(["cod", "stripe", "razorpay"]),
-  is_enabled:   z.boolean().default(true),
-  label:        z.string().min(1).max(120),
-  description:  z.string().max(500).nullable().optional(),
-  sort_order:   z.number().int().min(0).max(1000).default(0),
+  country_code:   z.string().min(2).max(3),
+  method:         z.enum(["cod", "stripe", "razorpay"]),
+  is_enabled:     z.boolean().default(true),
+  label:          z.string().min(1).max(120),
+  description:    z.string().max(500).nullable().optional(),
+  sort_order:     z.number().int().min(0).max(1000).default(0),
+  /** COD-only: ignored for non-cod methods. null = no cap. */
+  cod_max_amount: z.number().nonnegative().nullable().optional(),
 });
 
 export const POST = withApiHandler(async (request: Request) => {

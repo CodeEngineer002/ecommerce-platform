@@ -20,13 +20,14 @@ const SUPPORTED_METHODS = ["cod", "stripe", "razorpay"] as const;
 type MethodType = (typeof SUPPORTED_METHODS)[number];
 
 interface MethodRow {
-  id:           string;
-  country_code: string;
-  method:       MethodType;
-  is_enabled:   boolean;
-  label:        string;
-  description:  string | null;
-  sort_order:   number;
+  id:             string;
+  country_code:   string;
+  method:         MethodType;
+  is_enabled:     boolean;
+  label:          string;
+  description:    string | null;
+  sort_order:     number;
+  cod_max_amount: number | null;  // only meaningful when method='cod'
 }
 
 const COUNTRY_OPTIONS = [
@@ -187,6 +188,7 @@ function AddMethodDialog({
   const [description, setDescription] = useState("");
   const [sortOrder, setSortOrder]     = useState(method === "cod" ? 1 : 10);
   const [enabled, setEnabled]         = useState(true);
+  const [codCap, setCodCap]           = useState<string>("");
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState<string | null>(null);
 
@@ -208,6 +210,8 @@ function AddMethodDialog({
     setSaving(true);
     setError(null);
     try {
+      const codCapNumeric: number | null =
+        codCap.trim() === "" ? null : Number(codCap);
       await apiFetch("/api/admin/payment-methods", {
         method: "POST",
         body:   JSON.stringify({
@@ -217,6 +221,8 @@ function AddMethodDialog({
           label:        label.trim(),
           description:  description.trim() || null,
           sort_order:   sortOrder,
+          // Only meaningful when method='cod'; column ignored otherwise.
+          ...(method === "cod" ? { cod_max_amount: codCapNumeric } : {}),
         }),
       });
       onCreated();
@@ -289,6 +295,22 @@ function AddMethodDialog({
                 />
               </div>
 
+              {method === "cod" && (
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    COD max amount (country currency, blank = no cap)
+                  </Label>
+                  <Input
+                    type="number"
+                    value={codCap}
+                    onChange={(e) => setCodCap(e.target.value)}
+                    placeholder="e.g. 10000"
+                    min={0}
+                    step="0.01"
+                  />
+                </div>
+              )}
+
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
                   type="checkbox"
@@ -326,9 +348,16 @@ function MethodCard({ row, onSaved }: { row: MethodRow; onSaved: () => void }) {
   const [label, setLabel]             = useState(row.label);
   const [description, setDescription] = useState(row.description ?? "");
   const [sortOrder, setSortOrder]     = useState(row.sort_order);
+  // Empty string = "no cap"; numeric string = the cap. We keep this as a
+  // string so admin can clear the field cleanly.
+  const [codCap, setCodCap]           = useState<string>(
+    row.cod_max_amount === null ? "" : String(row.cod_max_amount),
+  );
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [saved, setSaved]             = useState(false);
+
+  const isCod = row.method === "cod";
 
   // Reset local state when parent re-fetches and row changes underneath us.
   useEffect(() => {
@@ -336,14 +365,18 @@ function MethodCard({ row, onSaved }: { row: MethodRow; onSaved: () => void }) {
     setLabel(row.label);
     setDescription(row.description ?? "");
     setSortOrder(row.sort_order);
+    setCodCap(row.cod_max_amount === null ? "" : String(row.cod_max_amount));
     setSaved(false);
-  }, [row.id, row.is_enabled, row.label, row.description, row.sort_order]);
+  }, [row.id, row.is_enabled, row.label, row.description, row.sort_order, row.cod_max_amount]);
+
+  const codCapNumeric: number | null = codCap.trim() === "" ? null : Number(codCap);
 
   const isDirty =
     enabled        !== row.is_enabled  ||
     label          !== row.label       ||
     (description || null) !== row.description ||
-    sortOrder      !== row.sort_order;
+    sortOrder      !== row.sort_order  ||
+    (isCod && codCapNumeric !== row.cod_max_amount);
 
   async function save() {
     setSaving(true);
@@ -353,10 +386,12 @@ function MethodCard({ row, onSaved }: { row: MethodRow; onSaved: () => void }) {
       await apiFetch(`/api/admin/payment-methods/${row.id}`, {
         method: "PATCH",
         body: JSON.stringify({
-          is_enabled:  enabled,
-          label:       label.trim(),
-          description: description.trim() || null,
-          sort_order:  sortOrder,
+          is_enabled:    enabled,
+          label:         label.trim(),
+          description:   description.trim() || null,
+          sort_order:    sortOrder,
+          // Only send the cap for COD rows (the column is ignored otherwise).
+          ...(isCod ? { cod_max_amount: codCapNumeric } : {}),
         }),
       });
       setSaved(true);
@@ -462,6 +497,26 @@ function MethodCard({ row, onSaved }: { row: MethodRow; onSaved: () => void }) {
             maxLength={500}
           />
         </div>
+
+        {isCod && (
+          <div className="space-y-1">
+            <Label className="text-xs">
+              COD max amount (in country currency, leave blank for no cap)
+            </Label>
+            <Input
+              type="number"
+              value={codCap}
+              onChange={(e) => setCodCap(e.target.value)}
+              placeholder="e.g. 10000"
+              min={0}
+              step="0.01"
+            />
+            <p className="text-xs text-muted-foreground">
+              Orders above this total can&apos;t use COD — customers see Stripe only.
+              Blank = no cap (use with care).
+            </p>
+          </div>
+        )}
 
         {error && <p className="text-sm text-red-700">{error}</p>}
         {saved && !isDirty && !error && (

@@ -15,19 +15,25 @@ import { useNavLoadingStore } from "@/store/nav-loading-store";
  * - NavigationOverlay → centered spinner + semi-transparent backdrop
  *
  * Lifecycle:
- *   1. Any component calls useNavLoadingStore.getState().start()
- *   2. Overlay becomes visible instantly
- *   3. usePathname() changes when the new page renders → stop() auto-fires
+ *   1. NavigationEvents calls startNav() on any <a> click → overlay shows
+ *   2. Mount effects on the new page kick off apiFetch calls → apiPending > 0
+ *   3. NavigationOverlay's pathname effect fires endNav(); overlay stays
+ *      visible because apiPending is still > 0
+ *   4. All pending API calls resolve → apiPending hits 0 → overlay hides
+ *
+ * Effects run child-first in React, so the new page's apiFetch wrappers
+ * increment apiPending BEFORE this overlay's pathname effect calls endNav.
  */
 export function NavigationOverlay() {
   const isNavigating = useNavLoadingStore((s) => s.isNavigating);
-  const stop = useNavLoadingStore((s) => s.stop);
+  const endNav = useNavLoadingStore((s) => s.endNav);
   const pathname = usePathname();
 
-  // Auto-clear when the new page has finished rendering (pathname changed)
+  // Release the nav-pending flag once we've landed on the new pathname.
+  // apiPending (driven by apiFetch) keeps the overlay visible until APIs settle.
   useEffect(() => {
-    stop();
-  }, [pathname, stop]);
+    endNav();
+  }, [pathname, endNav]);
 
   return (
     <div

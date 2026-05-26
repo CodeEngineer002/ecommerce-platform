@@ -42,7 +42,7 @@ export function CartDrawer() {
   const fmt = useFormatPrice();
   const router = useRouter();
   const [isNavigating, startNavigation] = useTransition();
-  const startNavOverlay = useNavLoadingStore((s) => s.start);
+  const startNavOverlay = useNavLoadingStore((s) => s.startNav);
 
   // Per-row pending state — prevents double-clicks and gives visual feedback
   const [pendingVariants, setPendingVariants] = useState<Set<string>>(new Set());

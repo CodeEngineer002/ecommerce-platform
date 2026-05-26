@@ -6,10 +6,12 @@ import { requireAdminPermission } from "@/lib/admin/with-admin-permission";
 import { NotFoundError } from "@/lib/errors";
 
 const patchSchema = z.object({
-  is_enabled: z.boolean().optional(),
-  label:      z.string().min(1).max(120).optional(),
-  description: z.string().max(500).nullable().optional(),
-  sort_order: z.number().int().min(0).max(1000).optional(),
+  is_enabled:     z.boolean().optional(),
+  label:          z.string().min(1).max(120).optional(),
+  description:    z.string().max(500).nullable().optional(),
+  sort_order:     z.number().int().min(0).max(1000).optional(),
+  /** COD-only: max accepted order total in country currency. null = no cap. */
+  cod_max_amount: z.number().nonnegative().nullable().optional(),
 });
 
 /**

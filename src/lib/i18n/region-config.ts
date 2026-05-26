@@ -19,15 +19,6 @@ export interface RegionConfig {
   dateFormat: string;
   numberFormat: string;
   /**
-   * Maximum order total accepted for Cash-on-Delivery in this region.
-   * Industry standard for India ≈ ₹10,000. Higher-amount COD has very high
-   * refusal/loss rates, so we cap it. Customers above this amount must use
-   * prepaid (Stripe/Razorpay).
-   *
-   * Set to `null` to disable COD entirely for the region.
-   */
-  codMaxAmount: number | null;
-  /**
    * How strictly to enforce the `serviceable_pincodes` table:
    *   - "strict":     pincode MUST exist in the table with is_deliverable=true.
    *                   Used in markets where ops has curated the full pincode
@@ -37,11 +28,15 @@ export interface RegionConfig {
    *                   allowed (subject to other gates). Right default while
    *                   you're still building the pincode list.
    *   - "off":        skip the serviceability check entirely (assume we ship
-   *                   everywhere in this country). COD availability still
-   *                   gated by codMaxAmount.
+   *                   everywhere in this country). COD availability gated
+   *                   by the country_payment_methods table.
    */
   pincodeEnforcement: "strict" | "permissive" | "off";
 }
+
+// NOTE: COD on/off + cap moved to the DB-backed country_payment_methods
+// table (migration 00069 + 00070). The old codMaxAmount field on this
+// type has been removed — admin manages it from /admin/payment-methods.
 
 export const REGION_CONFIGS: Record<CountryCode, RegionConfig> = {
   us: {
@@ -49,9 +44,6 @@ export const REGION_CONFIGS: Record<CountryCode, RegionConfig> = {
     taxRate: 0.0875, taxInclusive: false, taxLabel: 'Sales Tax',
     freeShippingThreshold: 75, defaultShippingCost: 9.99,
     dateFormat: 'MM/DD/YYYY', numberFormat: 'en-US',
-    // COD is rare in the US — keep it disabled until ops explicitly enable it
-    // for a region-specific pilot. Customers see prepaid only.
-    codMaxAmount: null,
     pincodeEnforcement: 'off',
   },
   uk: {
@@ -59,7 +51,6 @@ export const REGION_CONFIGS: Record<CountryCode, RegionConfig> = {
     taxRate: 0.20, taxInclusive: true, taxLabel: 'VAT',
     freeShippingThreshold: 50, defaultShippingCost: 4.99,
     dateFormat: 'DD/MM/YYYY', numberFormat: 'en-GB',
-    codMaxAmount: null,
     pincodeEnforcement: 'off',
   },
   de: {
@@ -67,7 +58,6 @@ export const REGION_CONFIGS: Record<CountryCode, RegionConfig> = {
     taxRate: 0.19, taxInclusive: true, taxLabel: 'MwSt.',
     freeShippingThreshold: 50, defaultShippingCost: 4.99,
     dateFormat: 'DD.MM.YYYY', numberFormat: 'de-DE',
-    codMaxAmount: null,
     pincodeEnforcement: 'off',
   },
   fr: {
@@ -75,7 +65,6 @@ export const REGION_CONFIGS: Record<CountryCode, RegionConfig> = {
     taxRate: 0.20, taxInclusive: true, taxLabel: 'TVA',
     freeShippingThreshold: 50, defaultShippingCost: 4.99,
     dateFormat: 'DD/MM/YYYY', numberFormat: 'fr-FR',
-    codMaxAmount: null,
     pincodeEnforcement: 'off',
   },
   it: {
@@ -83,7 +72,6 @@ export const REGION_CONFIGS: Record<CountryCode, RegionConfig> = {
     taxRate: 0.22, taxInclusive: true, taxLabel: 'IVA',
     freeShippingThreshold: 50, defaultShippingCost: 5.99,
     dateFormat: 'DD/MM/YYYY', numberFormat: 'it-IT',
-    codMaxAmount: null,
     pincodeEnforcement: 'off',
   },
   es: {
@@ -91,7 +79,6 @@ export const REGION_CONFIGS: Record<CountryCode, RegionConfig> = {
     taxRate: 0.21, taxInclusive: true, taxLabel: 'IVA',
     freeShippingThreshold: 50, defaultShippingCost: 4.99,
     dateFormat: 'DD/MM/YYYY', numberFormat: 'es-ES',
-    codMaxAmount: null,
     pincodeEnforcement: 'off',
   },
   in: {
@@ -99,9 +86,6 @@ export const REGION_CONFIGS: Record<CountryCode, RegionConfig> = {
     taxRate: 0.18, taxInclusive: false, taxLabel: 'GST',
     freeShippingThreshold: 999, defaultShippingCost: 99,
     dateFormat: 'DD/MM/YYYY', numberFormat: 'en-IN',
-    // India COD industry-standard cap: ₹10,000. Above this the refusal/RTO
-    // rate spikes and the loss per refused order becomes painful.
-    codMaxAmount: 10_000,
     // India: permissive while you're still building out the pincode list.
     // If the pincode is in the table, respect its flags. If not, allow.
     // Switch to 'strict' once ops has curated nationwide coverage.
@@ -112,8 +96,6 @@ export const REGION_CONFIGS: Record<CountryCode, RegionConfig> = {
     taxRate: 0.05, taxInclusive: false, taxLabel: 'VAT',
     freeShippingThreshold: 200, defaultShippingCost: 20,
     dateFormat: 'DD/MM/YYYY', numberFormat: 'ar-AE',
-    // UAE COD is common up to ~AED 1,000.
-    codMaxAmount: 1_000,
     pincodeEnforcement: 'permissive',
   },
 };
@@ -137,37 +119,6 @@ export function getCurrencyForCountry(countryCode: string | null | undefined): s
   const key = countryCode.toLowerCase() as CountryCode;
   const config = REGION_CONFIGS[key];
   return config?.currencyCode ?? "INR";
-}
-
-/**
- * Maximum order total allowed for COD in the given country.
- *   - Returns the configured number when COD is enabled
- *   - Returns `null` when COD is disabled for that region or country is unknown
- */
-export function getCodMaxAmountForCountry(
-  countryCode: string | null | undefined,
-): number | null {
-  if (!countryCode) return null;
-  const key = countryCode.toLowerCase() as CountryCode;
-  return REGION_CONFIGS[key]?.codMaxAmount ?? null;
-}
-
-/**
- * Single decision: can a COD order of this total be accepted to this country?
- * Returns `{ ok: true }` or `{ ok: false, reason, maxAmount }`.
- */
-export function checkCodEligibility(
-  countryCode: string | null | undefined,
-  orderTotal: number,
-): { ok: true } | { ok: false; reason: "disabled" | "over_limit"; maxAmount: number | null } {
-  const maxAmount = getCodMaxAmountForCountry(countryCode);
-  if (maxAmount === null) {
-    return { ok: false, reason: "disabled", maxAmount: null };
-  }
-  if (orderTotal > maxAmount) {
-    return { ok: false, reason: "over_limit", maxAmount };
-  }
-  return { ok: true };
 }
 
 /**
