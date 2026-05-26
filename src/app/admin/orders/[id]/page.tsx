@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CodCollectionPanel } from "@/components/admin/orders/cod-collection-panel";
+import { CodVerificationPanel } from "@/components/admin/orders/cod-verification-panel";
 import { DeliveryRefusalPanel } from "@/components/admin/orders/delivery-refusal-panel";
 import { AdminTrackingForm } from "@/components/admin/orders/tracking-form";
 import type { FulfillmentData } from "@/components/admin/orders/tracking-form";
@@ -260,6 +261,17 @@ export default async function AdminOrderDetailPage({ params }: Props) {
 
         {/* ── Left column ────────────────────────────────────────────── */}
         <div className="space-y-6">
+
+          {/* ── COD Verification Panel (P0-3) ─────────────────────────────
+              Renders for high-value COD orders awaiting an admin verification
+              call. Auto-queue cron skips these until verified. */}
+          <CodVerificationPanel
+            orderId={orderId}
+            verificationRequired={
+              (order as { cod_verification_required?: boolean }).cod_verification_required ?? false
+            }
+            verifiedAt={(order as { cod_verified_at?: string | null }).cod_verified_at ?? null}
+          />
 
           {/* ── COD Collection Panel ──────────────────────────────────── */}
           {showCodPanel && (

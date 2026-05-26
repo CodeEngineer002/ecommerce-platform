@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle, Loader2, PackageCheck, ShoppingBag } from "lucide-react";
 import Image from "next/image";
 import { useParams } from "next/navigation";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "react-hot-toast";
 
@@ -23,7 +23,11 @@ import { CheckoutAddressPanel } from "@/features/checkout/components/checkout-ad
 import { StripePaymentForm } from "@/features/checkout/components/stripe-payment-form";
 import { useCreateOrder } from "@/features/orders/hooks/use-orders";
 import { ROUTES } from "@/lib/constants";
-import { getCurrencyForCountry } from "@/lib/i18n/region-config";
+import {
+  checkCodEligibility,
+  getCurrencyForCountry,
+  resolveServiceability,
+} from "@/lib/i18n/region-config";
 import { useFormatPrice } from "@/hooks/use-format-price";
 import { checkoutExtrasSchema, type CheckoutExtrasData } from "@/lib/validators";
 import { useCartStore } from "@/store/cart-store";
@@ -173,6 +177,8 @@ export default function CheckoutPage() {
     register,
     handleSubmit,
     control,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<CheckoutExtrasData>({
     resolver: zodResolver(checkoutExtrasSchema),
@@ -181,6 +187,104 @@ export default function CheckoutPage() {
       paymentProvider: "cod",
     },
   });
+
+  // ── P0-1: COD eligibility (region + amount cap) ───────────────────────────
+  // Eligibility is recomputed whenever the active country or pricing changes.
+  // The server is the source of truth (api/orders/create re-checks), but we
+  // drive the UI here so customers see the right options instead of failing
+  // at submit time.
+  // Defer pincode + serviceability eligibility derivation till after the
+  // serviceability state is declared below. We just stash the amount-based
+  // eligibility here; the combined `codAvailable` is computed lower.
+  const codEligibility = checkCodEligibility(activeCountryIso, pricing?.total ?? 0);
+  const selectedPayment = watch("paymentProvider");
+
+  // ── P0-2: pincode serviceability state ────────────────────────────────────
+  // Recomputed whenever the shipping address changes. The server re-checks
+  // at order placement (api/orders/create) but this surfaces the result
+  // BEFORE the user fills out coupons/notes/etc.
+  const [serviceability, setServiceability] = useState<{
+    checking:        boolean;
+    found:           boolean;
+    is_deliverable:  boolean;
+    cod_enabled:     boolean;
+    pincode:         string | null;
+  }>({ checking: false, found: false, is_deliverable: true, cod_enabled: true, pincode: null });
+
+  // Pincode-level COD gate. `serviceability.cod_enabled` is already
+  // policy-resolved (resolveServiceability handled strict/permissive/off),
+  // so we just need to honour it once the customer has actually picked an
+  // address. Before that, default to permissive.
+  const codBlockedByPincode =
+    serviceability.pincode !== null && !serviceability.cod_enabled;
+
+  // Single derived flag the UI cares about: COD is available iff amount-cap
+  // passes AND pincode allows it.
+  const codAvailable = codEligibility.ok && !codBlockedByPincode;
+
+  // Pre-narrowed reason so the JSX doesn't have to discriminate the union.
+  const codUnavailableReason: "disabled" | "over_limit" | "pincode" | null =
+    codEligibility.ok === false
+      ? codEligibility.reason
+      : codBlockedByPincode
+        ? "pincode"
+        : null;
+  const codMaxAmount =
+    codEligibility.ok === false ? codEligibility.maxAmount : null;
+
+  // If the customer had COD selected but it just became unavailable (amount
+  // crossed cap, pincode changed, etc.), force-switch to stripe so submit
+  // isn't a dead end.
+  useEffect(() => {
+    if (selectedPayment === "cod" && !codAvailable) {
+      setValue("paymentProvider", "stripe");
+    }
+  }, [codAvailable, selectedPayment, setValue]);
+
+  // ── Per-country payment methods (admin-configurable) ──────────────────────
+  // Fetched from /api/payment-methods?country=… Returns only enabled rows.
+  // Drives which radios render + their labels. If a method is missing from
+  // this list, it's not available in the current country at all.
+  interface PaymentMethodOption {
+    method:      string;
+    label:       string;
+    description: string | null;
+    sort_order:  number;
+  }
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/payment-methods?country=${encodeURIComponent(activeCountryIso)}`,
+        );
+        const json = await res.json() as {
+          data?: { methods: PaymentMethodOption[] };
+        };
+        if (!cancelled) setPaymentMethods(json.data?.methods ?? []);
+      } catch {
+        // Lookup failure — fall back to a hardcoded list so checkout still
+        // works. Server re-checks at order placement.
+        if (!cancelled) {
+          setPaymentMethods([
+            { method: "stripe", label: "Credit / Debit Card", description: null, sort_order: 10 },
+          ]);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeCountryIso]);
+
+  // Auto-switch away from disabled methods (when the country no longer
+  // enables what was selected).
+  const codInCountry    = paymentMethods.some((m) => m.method === "cod");
+  const stripeInCountry = paymentMethods.some((m) => m.method === "stripe");
+  useEffect(() => {
+    if (selectedPayment === "cod"    && !codInCountry)    setValue("paymentProvider", "stripe");
+    if (selectedPayment === "stripe" && !stripeInCountry && codInCountry) setValue("paymentProvider", "cod");
+  }, [codInCountry, stripeInCountry, selectedPayment, setValue]);
 
   // ── Auto-validate on address select ───────────────────────────────────────
   // Validates immediately when the user picks a saved address,
@@ -195,6 +299,41 @@ export default function CheckoutPage() {
     setShippingValidating(false);
     setShippingValidated(result.valid);
     if (!result.valid) setShippingErrors(result.errors ?? null);
+
+    // Kick off serviceability lookup in parallel — non-blocking on the
+    // address-validation flow but used by the COD radio + submit guard.
+    // resolveServiceability() applies the country's pincodeEnforcement
+    // policy on top of the raw lookup so the UI matches the server gate
+    // exactly (no surprises at submit time).
+    setServiceability((s) => ({ ...s, checking: true, pincode: addr.postal_code }));
+    try {
+      const qs  = new URLSearchParams({ country: addr.country_code, pincode: addr.postal_code });
+      const res = await fetch(`/api/serviceability/check?${qs}`);
+      const json = await res.json() as {
+        data?: { found: boolean; is_deliverable: boolean; cod_enabled: boolean };
+      };
+      const raw = json.data ?? null;
+      const resolved = resolveServiceability(addr.country_code, raw);
+      setServiceability({
+        checking:       false,
+        found:          raw?.found ?? false,
+        is_deliverable: resolved.is_deliverable,
+        cod_enabled:    resolved.cod_enabled,
+        pincode:        addr.postal_code,
+      });
+    } catch {
+      // Network / lookup outage — apply policy with no row found. Permissive
+      // and off policies will allow through; strict will block. Either way
+      // the server re-checks at order placement.
+      const resolved = resolveServiceability(addr.country_code, null);
+      setServiceability({
+        checking:       false,
+        found:          false,
+        is_deliverable: resolved.is_deliverable,
+        cod_enabled:    resolved.cod_enabled,
+        pincode:        addr.postal_code,
+      });
+    }
   }, [activeCountryIso]);
 
   const handleBillingSelect = useCallback(async (addr: CustomerAddress) => {
@@ -324,6 +463,10 @@ export default function CheckoutPage() {
     if (shippingValidating) return "Verifying shipping address…";
     if (shippingErrors) return "Shipping address has validation errors";
     if (!shippingValidated) return "Waiting for address verification…";
+    if (serviceability.checking) return "Checking delivery availability for your pincode…";
+    if (serviceability.pincode !== null && !serviceability.is_deliverable) {
+      return `We don't deliver to pincode ${serviceability.pincode} yet. Choose a different shipping address.`;
+    }
     if (!billingSameAsShipping && !selectedBilling) return "Select a billing address to continue";
     if (billingValidating) return "Verifying billing address…";
     if (billingErrors) return "Billing address has validation errors";
@@ -511,22 +654,67 @@ export default function CheckoutPage() {
                 <CardTitle>Payment Method</CardTitle>
               </CardHeader>
               <CardContent>
-                <Controller
-                  name="paymentProvider"
-                  control={control}
-                  render={({ field }) => (
-                    <RadioGroup value={field.value} onValueChange={field.onChange} className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="cod" id="cod" />
-                        <Label htmlFor="cod">Cash on Delivery</Label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="stripe" id="stripe" />
-                        <Label htmlFor="stripe">Credit / Debit Card (Stripe)</Label>
-                      </div>
-                    </RadioGroup>
-                  )}
-                />
+                {paymentMethods.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No payment methods are configured for your region. Please
+                    contact support.
+                  </p>
+                ) : (
+                  <Controller
+                    name="paymentProvider"
+                    control={control}
+                    render={({ field }) => (
+                      <RadioGroup value={field.value} onValueChange={field.onChange} className="space-y-2">
+                        {paymentMethods.map((m) => {
+                          // For COD specifically, apply the layered guardrails
+                          // (amount cap, pincode block). Non-COD methods aren't
+                          // gated beyond the country-level enable flag.
+                          const isCod    = m.method === "cod";
+                          const disabled = isCod && !codAvailable;
+                          return (
+                            <div key={m.method}>
+                              <div className="flex items-center gap-2">
+                                <RadioGroupItem
+                                  value={m.method}
+                                  id={m.method}
+                                  disabled={disabled}
+                                />
+                                <Label
+                                  htmlFor={m.method}
+                                  className={disabled ? "text-muted-foreground" : undefined}
+                                >
+                                  {m.label}
+                                </Label>
+                              </div>
+                              {m.description && !disabled && (
+                                <p className="mt-1 ml-6 text-xs text-muted-foreground">
+                                  {m.description}
+                                </p>
+                              )}
+                              {isCod && codUnavailableReason === "over_limit" && (
+                                <p className="mt-1 ml-6 text-xs text-muted-foreground">
+                                  Over the COD limit of {fmt(codMaxAmount ?? 0)} for this
+                                  region — please choose a prepaid method below.
+                                </p>
+                              )}
+                              {isCod && codUnavailableReason === "disabled" && (
+                                <p className="mt-1 ml-6 text-xs text-muted-foreground">
+                                  Cash on Delivery is not available in this region.
+                                </p>
+                              )}
+                              {isCod && codUnavailableReason === "pincode" && (
+                                <p className="mt-1 ml-6 text-xs text-muted-foreground">
+                                  Cash on Delivery is not available at pincode {serviceability.pincode}
+                                  {" "}— please choose a prepaid method below.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </RadioGroup>
+                    )}
+                  />
+                )}
               </CardContent>
             </Card>
 

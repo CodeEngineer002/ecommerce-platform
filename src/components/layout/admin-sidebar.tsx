@@ -2,11 +2,13 @@
 
 import {
   AlertTriangle,
+  Banknote,
   BarChart3,
   ChevronDown,
   FileText,
   LayoutDashboard,
   LayoutTemplate,
+  MapPin,
   Megaphone,
   Menu,
   Package,
@@ -14,6 +16,7 @@ import {
   ShoppingBag,
   Tag,
   Users,
+  Wallet,
   Warehouse,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -65,10 +68,13 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Commerce",
     permission: PERMISSIONS.ORDERS_READ,
     items: [
-      { href: ROUTES.admin.orders,         label: "Orders",     icon: ShoppingBag },
-      { href: ROUTES.admin.returns,        label: "Returns",    icon: PackageX, permission: PERMISSIONS.ORDERS_MANAGE },
-      { href: ROUTES.admin.orderExceptions, label: "Exceptions", icon: AlertTriangle, permission: PERMISSIONS.ORDERS_MANAGE },
-      { href: ROUTES.admin.customers,      label: "Customers",  icon: Users, permission: PERMISSIONS.CUSTOMERS_READ },
+      { href: ROUTES.admin.orders,              label: "Orders",              icon: ShoppingBag },
+      { href: ROUTES.admin.returns,             label: "Returns",             icon: PackageX, permission: PERMISSIONS.ORDERS_MANAGE },
+      { href: ROUTES.admin.orderExceptions,     label: "Exceptions",          icon: AlertTriangle, permission: PERMISSIONS.ORDERS_MANAGE },
+      { href: ROUTES.admin.codReconciliation,   label: "COD Reconciliation",  icon: Banknote, permission: PERMISSIONS.ORDERS_MANAGE },
+      { href: ROUTES.admin.serviceablePincodes, label: "Serviceable Pincodes", icon: MapPin, permission: PERMISSIONS.ORDERS_MANAGE },
+      { href: ROUTES.admin.paymentMethods,      label: "Payment Methods",     icon: Wallet, permission: PERMISSIONS.ORDERS_MANAGE },
+      { href: ROUTES.admin.customers,           label: "Customers",           icon: Users, permission: PERMISSIONS.CUSTOMERS_READ },
     ],
   },
   {

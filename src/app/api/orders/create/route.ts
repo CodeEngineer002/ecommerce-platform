@@ -5,7 +5,12 @@ import { calculatePricing } from "@/domain/pricing/pricing-engine";
 import type { LineItem } from "@/domain/pricing/types";
 import { apiError, apiSuccess, withApiHandler } from "@/lib/api";
 import { CART_MAX_QUANTITY } from "@/lib/constants";
-import { getCurrencyForCountry } from "@/lib/i18n/region-config";
+import {
+  checkCodEligibility,
+  getCurrencyForCountry,
+  isCodVerificationRequired,
+  resolveServiceability,
+} from "@/lib/i18n/region-config";
 import { AuthError, InventoryError, NotFoundError } from "@/lib/errors";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { getPaymentProvider } from "@/lib/payment";
@@ -261,8 +266,93 @@ export const POST = withRateLimit(
     const taxConfig    = getTaxConfig(shippingAddress.country);
     const currencyCode = getCurrencyForCountry(shippingAddress.country);
 
+    // ── Gate: is this payment method enabled for the customer's country? ─────
+    // Country-level admin toggle (table country_payment_methods). This is the
+    // FIRST layer of payment-method availability — before amount cap, before
+    // pincode check. Lets ops disable a method without a deploy.
+    {
+      const { data: methodRow, error: methodErr } = await db
+        .from("country_payment_methods")
+        .select("is_enabled")
+        .eq("country_code", shippingAddress.country.toUpperCase())
+        .eq("method", paymentProvider)
+        .maybeSingle();
+      if (methodErr) {
+        console.warn("[orders/create] payment-method lookup failed:", methodErr.message);
+      } else if (!methodRow || !methodRow.is_enabled) {
+        return apiError(
+          `${paymentProvider === "cod" ? "Cash on Delivery" : "This payment method"} is not available for ${shippingAddress.country}. Please choose a different payment method.`,
+          422,
+          "PAYMENT_METHOD_DISABLED",
+        );
+      }
+    }
+
+    // ── P0-2: pincode serviceability gate ────────────────────────────────────
+    // Hierarchy:
+    //   1. Raw table lookup (whether pincode is in serviceable_pincodes).
+    //   2. resolveServiceability() applies the country's pincodeEnforcement
+    //      policy — strict / permissive / off — so a missing pincode in a
+    //      "permissive" country doesn't block legitimate orders while ops
+    //      builds out the list.
+    //
+    // Reject before inventory reservation so we don't tie up stock for
+    // orders we can't fulfil.
+    {
+      const { data: svcRows, error: svcErr } = await db.rpc("check_pincode_serviceability", {
+        p_country: shippingAddress.country,
+        p_pincode: shippingAddress.postal_code,
+      });
+      if (svcErr) {
+        // Soft-fail on lookup outage — better a successful order than a missed
+        // sale due to an infra hiccup. Policy enforcement still kicks in if
+        // raw lookup never produced a row.
+        console.warn("[orders/create] serviceability lookup failed:", svcErr.message);
+      }
+      const raw = Array.isArray(svcRows) ? svcRows[0] : svcRows;
+      const svc = resolveServiceability(shippingAddress.country, raw ?? null);
+
+      if (!svc.is_deliverable) {
+        return apiError(
+          `We don't deliver to ${shippingAddress.postal_code} yet. Please use a different shipping address.`,
+          422,
+          "PINCODE_NOT_SERVICEABLE",
+          { pincode: [shippingAddress.postal_code] },
+        );
+      }
+      if (paymentProvider === "cod" && !svc.cod_enabled) {
+        return apiError(
+          `Cash on Delivery is not available for ${shippingAddress.postal_code}. Please choose a prepaid payment method.`,
+          422,
+          "COD_NOT_AVAILABLE_FOR_PINCODE",
+          { pincode: [shippingAddress.postal_code] },
+        );
+      }
+    }
+
     // ── Calculate pricing server-side ────────────────────────────────────────
     const pricing = calculatePricing(lineItems, couponData, undefined, taxConfig);
+
+    // ── P0-1: enforce per-country COD max amount ─────────────────────────────
+    // Server is the only trusted gate. The checkout UI also disables the COD
+    // option above this threshold but a determined client could bypass that.
+    if (paymentProvider === "cod") {
+      const codCheck = checkCodEligibility(shippingAddress.country, pricing.total);
+      if (!codCheck.ok) {
+        const fields: Record<string, string[]> = {};
+        if (codCheck.maxAmount !== null) {
+          fields.maxAmount = [String(codCheck.maxAmount)];
+        }
+        return apiError(
+          codCheck.reason === "disabled"
+            ? `Cash on Delivery is not available for ${shippingAddress.country}. Please choose a prepaid payment method.`
+            : `Cash on Delivery is only available for orders up to ${codCheck.maxAmount} ${currencyCode}. Your total ${pricing.total} ${currencyCode} exceeds the limit — please choose a prepaid payment method.`,
+          422,
+          "COD_NOT_AVAILABLE",
+          fields,
+        );
+      }
+    }
 
     // ── Build cart items payload for atomic RPC ───────────────────────────────
     // snapshot captures product_code + sku + color/size so order history is
@@ -371,6 +461,12 @@ export const POST = withRateLimit(
     // Admin must explicitly confirm cash collection via:
     //   POST /api/admin/orders/:id/cod-collect
     if (paymentProvider === "cod") {
+      // P0-3: high-value COD orders need an admin verification call before
+      // auto-queue moves them to processing. Low-value orders auto-pass.
+      const needsVerification = isCodVerificationRequired(
+        shippingAddress.country, pricing.total,
+      );
+
       await Promise.all([
         db.rpc("update_order_status", {
           p_order_id: orderId as string,
@@ -383,14 +479,25 @@ export const POST = withRateLimit(
         db.from("payments")
           .update({ status: "cod_pending_collection" })
           .eq("id", payment!.id),
+        // P0-3: flag the order if verification is needed. auto_queue_confirmed_orders
+        // skips orders where cod_verification_required=true AND cod_verified_at IS NULL.
+        db.from("orders")
+          .update({ cod_verification_required: needsVerification })
+          .eq("id", orderId as string),
         // Write order event for observability / admin timeline
         db.from("order_events").insert({
           order_id:    orderId as string,
-          event_type:  "order_confirmed",
+          event_type:  needsVerification ? "cod_verification_pending" : "order_confirmed",
           actor_id:    user.id,
           actor_type:  "customer",
-          description: "COD order placed and confirmed — awaiting cash collection at delivery",
-          metadata:    { payment_method: "cod", total: pricing.total },
+          description: needsVerification
+            ? `COD order placed — awaiting admin verification call (amount ${pricing.total} ${currencyCode})`
+            : "COD order placed and confirmed — awaiting cash collection at delivery",
+          metadata:    {
+            payment_method: "cod",
+            total: pricing.total,
+            verification_required: needsVerification,
+          },
           source:      "customer_action",
         }),
       ]);

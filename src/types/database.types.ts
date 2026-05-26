@@ -1714,6 +1714,42 @@ export type Database = {
           },
         ]
       }
+      country_payment_methods: {
+        Row: {
+          country_code: string
+          created_at: string
+          description: string | null
+          id: string
+          is_enabled: boolean
+          label: string
+          method: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          country_code: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_enabled?: boolean
+          label: string
+          method: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          country_code?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_enabled?: boolean
+          label?: string
+          method?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       coupon_usage: {
         Row: {
           coupon_id: string
@@ -3011,6 +3047,10 @@ export type Database = {
       orders: {
         Row: {
           billing_address: Json | null
+          cod_verification_note: string | null
+          cod_verification_required: boolean
+          cod_verified_at: string | null
+          cod_verified_by: string | null
           coupon_code: string | null
           coupon_id: string | null
           created_at: string
@@ -3035,6 +3075,10 @@ export type Database = {
         }
         Insert: {
           billing_address?: Json | null
+          cod_verification_note?: string | null
+          cod_verification_required?: boolean
+          cod_verified_at?: string | null
+          cod_verified_by?: string | null
           coupon_code?: string | null
           coupon_id?: string | null
           created_at?: string
@@ -3059,6 +3103,10 @@ export type Database = {
         }
         Update: {
           billing_address?: Json | null
+          cod_verification_note?: string | null
+          cod_verification_required?: boolean
+          cod_verified_at?: string | null
+          cod_verified_by?: string | null
           coupon_code?: string | null
           coupon_id?: string | null
           created_at?: string
@@ -4055,6 +4103,9 @@ export type Database = {
           metadata: Json
           order_id: string
           payment_id: string | null
+          payout_completed_at: string | null
+          payout_method: string | null
+          payout_reference: string | null
           processed_at: string | null
           processed_by: string | null
           provider_refund_id: string | null
@@ -4073,6 +4124,9 @@ export type Database = {
           metadata?: Json
           order_id: string
           payment_id?: string | null
+          payout_completed_at?: string | null
+          payout_method?: string | null
+          payout_reference?: string | null
           processed_at?: string | null
           processed_by?: string | null
           provider_refund_id?: string | null
@@ -4091,6 +4145,9 @@ export type Database = {
           metadata?: Json
           order_id?: string
           payment_id?: string | null
+          payout_completed_at?: string | null
+          payout_method?: string | null
+          payout_reference?: string | null
           processed_at?: string | null
           processed_by?: string | null
           provider_refund_id?: string | null
@@ -4548,6 +4605,48 @@ export type Database = {
           id?: string
           is_system?: boolean
           name?: string
+        }
+        Relationships: []
+      }
+      serviceable_pincodes: {
+        Row: {
+          city: string | null
+          cod_enabled: boolean
+          country_code: string
+          created_at: string
+          expected_days: number | null
+          id: string
+          is_deliverable: boolean
+          notes: string | null
+          pincode: string
+          state: string | null
+          updated_at: string
+        }
+        Insert: {
+          city?: string | null
+          cod_enabled?: boolean
+          country_code: string
+          created_at?: string
+          expected_days?: number | null
+          id?: string
+          is_deliverable?: boolean
+          notes?: string | null
+          pincode: string
+          state?: string | null
+          updated_at?: string
+        }
+        Update: {
+          city?: string | null
+          cod_enabled?: boolean
+          country_code?: string
+          created_at?: string
+          expected_days?: number | null
+          id?: string
+          is_deliverable?: boolean
+          notes?: string | null
+          pincode?: string
+          state?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -5059,6 +5158,17 @@ export type Database = {
         Returns: undefined
       }
       cancel_unpaid_orders: { Args: never; Returns: number }
+      check_pincode_serviceability: {
+        Args: { p_country: string; p_pincode: string }
+        Returns: {
+          city: string
+          cod_enabled: boolean
+          expected_days: number
+          found: boolean
+          is_deliverable: boolean
+          state: string
+        }[]
+      }
       check_replacement_inventory: {
         Args: { p_return_id: string }
         Returns: Json
@@ -5170,6 +5280,23 @@ export type Database = {
           cart_id: string
           user_id: string
         }[]
+      }
+      mark_cod_refund_paid: {
+        Args: {
+          p_admin_id: string
+          p_payout_method: string
+          p_reference?: string
+          p_refund_id: string
+        }
+        Returns: undefined
+      }
+      mark_cod_verification_failed: {
+        Args: { p_admin_id: string; p_order_id: string; p_reason: string }
+        Returns: undefined
+      }
+      mark_cod_verified: {
+        Args: { p_admin_id: string; p_note?: string; p_order_id: string }
+        Returns: undefined
       }
       mark_delivery_refused: {
         Args: { p_actor_id: string; p_order_id: string; p_reason: string }
