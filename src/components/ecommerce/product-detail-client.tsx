@@ -5,6 +5,7 @@ import { useMemo, useState, type ReactNode } from "react";
 
 import { AddToCartSection } from "@/app/(storefront)/products/[slug]/add-to-cart-section";
 import { ProductGallery } from "@/components/ecommerce/product-gallery";
+import { VariantPriceProvider, type VariantPriceMap } from "@/components/ecommerce/variant-price-context";
 import { VariantSelector } from "@/components/ecommerce/variant-selector";
 import type { ProductWithDetails } from "@/types";
 
@@ -15,6 +16,13 @@ interface Props {
    * Passed from the server page so those elements remain server-rendered.
    */
   children: ReactNode;
+  /**
+   * variant_id → resolved (price, compare_price) for the customer's currency.
+   * Wired in by the server page via resolveVariantPrices. Empty object is
+   * valid — VariantPriceDisplay will fall back to product.base_price /
+   * compare_price so existing PDPs without per-market overrides keep working.
+   */
+  priceMap?: VariantPriceMap;
 }
 
 /**
@@ -29,7 +37,7 @@ interface Props {
  * Flat model (single-option variants):
  *   selectedVariantId managed directly, gallery syncs as before.
  */
-export function ProductDetailClient({ product, children }: Props) {
+export function ProductDetailClient({ product, children, priceMap = {} }: Props) {
   const activeVariants = product.variants.filter((v) => v.is_active);
 
   // Detect whether variants use a color+size model
@@ -123,6 +131,12 @@ export function ProductDetailClient({ product, children }: Props) {
   };
 
   return (
+    <VariantPriceProvider
+      selectedVariantId={selectedVariantId}
+      priceMap={priceMap}
+      fallbackPrice={product.base_price}
+      fallbackComparePrice={product.compare_price ?? null}
+    >
     <div className="grid gap-8 lg:grid-cols-2">
       {/* Left column — color-filtered images; gallery resets via firstImageId effect */}
       <ProductGallery
@@ -186,5 +200,6 @@ export function ProductDetailClient({ product, children }: Props) {
         )}
       </div>
     </div>
+    </VariantPriceProvider>
   );
 }

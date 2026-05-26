@@ -14,6 +14,7 @@ import { AuthError, InventoryError, NotFoundError } from "@/lib/errors";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { getPaymentProvider } from "@/lib/payment";
 import { perfMark } from "@/lib/perf";
+import { resolveVariantPrices } from "@/lib/pricing/resolve-variant-price";
 import { withRateLimit } from "@/lib/rate-limit";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getTaxConfig } from "@/lib/tax/tax-service";
@@ -215,6 +216,12 @@ export const POST = withRateLimit(
       }
     }
 
+    // ── Resolve country-specific tax + currency from shipping address ─────────
+    // Moved above the variant fetch so the price resolver can scope its lookup
+    // to the customer's currency. Tax/currency are pure functions of country.
+    const taxConfig    = getTaxConfig(shippingAddress.country);
+    const currencyCode = getCurrencyForCountry(shippingAddress.country);
+
     // ── Fetch authoritative prices — never trust client-submitted prices ──────
     // The hard per-row lock still happens inside create_order_atomic; the cap
     // above is an early-exit safety net, not a replacement for the RPC guard.
@@ -236,14 +243,20 @@ export const POST = withRateLimit(
       }
     }
 
+    // Currency-scoped price resolution. Falls back to legacy variant.price /
+    // product.base_price when no override exists — preserving existing
+    // behaviour for markets without a per-currency price configured.
+    const priceMap = await resolveVariantPrices(db, variantIds, currencyCode);
+
     // ── Build line items for pricing engine ──────────────────────────────────
     const lineItems: LineItem[] = cartItems.map((item) => {
       const variant = variants.find((v) => v.id === item.variant_id)!;
       const product = resolveProduct(variant.product);
+      const resolved = priceMap.get(item.variant_id);
       return {
         variantId: item.variant_id,
         quantity: item.quantity,
-        unitPrice: getVariantPrice(variant),
+        unitPrice: resolved?.price ?? getVariantPrice(variant),
         productName: product?.name ?? "Unknown",
       };
     });
@@ -260,10 +273,6 @@ export const POST = withRateLimit(
       const subtotal = lineItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
       couponData = await validateCoupon(effectiveCouponCode, subtotal, user.id);
     }
-
-    // ── Resolve country-specific tax + currency from shipping address ─────────
-    const taxConfig    = getTaxConfig(shippingAddress.country);
-    const currencyCode = getCurrencyForCountry(shippingAddress.country);
 
     // ── Gate: is this payment method enabled for the customer's country? ─────
     // Country-level admin toggle + COD cap (table country_payment_methods).

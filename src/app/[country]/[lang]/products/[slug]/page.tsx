@@ -4,9 +4,9 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { FreeShippingNote } from "@/components/ecommerce/free-shipping-note";
-import { PriceDisplay } from "@/components/ecommerce/price-display";
 import { ProductDetailClient } from "@/components/ecommerce/product-detail-client";
 import { ProductGrid } from "@/components/ecommerce/product-grid";
+import { VariantPriceDisplay, type VariantPriceMap } from "@/components/ecommerce/variant-price-context";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,7 +14,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getProductBySlug, getRelatedProducts } from "@/features/products/services/product.service";
 import { APP_NAME } from "@/lib/constants";
 import { isValidCountry, isValidLanguage, type CountryCode, type LanguageCode } from "@/lib/i18n/config";
+import { getCurrencyForCountry } from "@/lib/i18n/region-config";
 import { buildLocaleRoutes, type LocaleParams } from "@/lib/i18n/routing";
+import { resolveVariantPrices } from "@/lib/pricing/resolve-variant-price";
+import { createServiceClient } from "@/lib/supabase/server";
 
 interface Props {
   params: Promise<{ country: string; lang: string; slug: string }>;
@@ -78,6 +81,16 @@ export default async function LocaleProductDetailPage({ params }: Props) {
     : { country: "in", lang: "en" };
   const routes = buildLocaleRoutes(localeParams);
 
+  // Resolve per-variant pricing for the customer's currency. The fallback
+  // chain inside the RPC keeps existing behaviour when no override exists.
+  const currency = getCurrencyForCountry(localeParams.country);
+  const variantIds = product.variants.map((v) => v.id);
+  const resolved = variantIds.length > 0
+    ? await resolveVariantPrices(createServiceClient(), variantIds, currency)
+    : new Map();
+  const priceMap: VariantPriceMap = {};
+  for (const [vid, p] of resolved) priceMap[vid] = p;
+
   const inStock = product.variants.some((v) => {
     if (!v.is_active) return false;
     const levels = (v as typeof v & { inventory_levels?: { quantity: number; reserved: number }[] }).inventory_levels;
@@ -94,7 +107,7 @@ export default async function LocaleProductDetailPage({ params }: Props) {
         share a single source of truth. Static metadata is passed as children
         (server-rendered) and placed above the interactive controls.
       */}
-      <ProductDetailClient product={product}>
+      <ProductDetailClient product={product} priceMap={priceMap}>
         {product.category && (
           <a
             href={routes.category(product.category.slug)}
@@ -127,11 +140,7 @@ export default async function LocaleProductDetailPage({ params }: Props) {
           )}
         </div>
 
-        <PriceDisplay
-          price={product.base_price}
-          comparePrice={product.compare_price}
-          size="lg"
-        />
+        <VariantPriceDisplay size="lg" />
 
         {product.short_desc && (
           <p className="text-muted-foreground">{product.short_desc}</p>

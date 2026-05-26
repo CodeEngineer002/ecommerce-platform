@@ -24,6 +24,7 @@ import { calculateDiscount, calculatePricing } from "@/domain/pricing/pricing-en
 import type { CouponData, LineItem } from "@/domain/pricing/types";
 import { CART_MAX_QUANTITY } from "@/lib/constants";
 import { logger } from "@/lib/logger";
+import { resolveVariantPrice, resolveVariantPrices } from "@/lib/pricing/resolve-variant-price";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getTaxConfig } from "@/lib/tax/tax-service";
 
@@ -175,6 +176,12 @@ async function buildCartSummary(
     variantMap.set(v.id, { ...v, product: product ?? null, inventory_levels: levels });
   }
 
+  // Resolve per-currency prices in one batched RPC call. When no override row
+  // exists for the cart's currency, the resolver falls back to the legacy
+  // variant.price column — i.e. identical to pre-migration behaviour.
+  const cartCurrency = cartRow.currency_code ?? DEFAULT_CURRENCY;
+  const priceMap = await resolveVariantPrices(dbClient, variantIds, cartCurrency);
+
   const items: CartItemDetail[] = [];
   const warnings: CartWarning[] = [];
   const lineItems: LineItem[] = [];
@@ -189,7 +196,10 @@ async function buildCartSummary(
       continue;
     }
 
-    const currentPrice = variant.price ?? variant.product.base_price;
+    // Resolved price for the cart's currency; falls back to legacy column
+    // when no override exists (preserves today's behaviour).
+    const resolved = priceMap.get(raw.variant_id);
+    const currentPrice = resolved?.price ?? variant.price ?? variant.product.base_price;
     const available = sumAvailableStock(variant.inventory_levels);
 
     // Stale price detection
@@ -461,7 +471,10 @@ export async function addCartItem(
   // If cap would leave qty unchanged (already maxed out), still allow the upsert
   // but the add_result will reveal it was capped so the client can show feedback.
 
-  const serverPrice = variant.price ?? (variant.product?.base_price ?? 0);
+  // Snapshot the price the customer actually saw — resolver picks the right
+  // currency-scoped row when available, falls back to legacy price otherwise.
+  const resolvedAdd = await resolveVariantPrice(db, input.variant_id, cartRow.currency_code ?? DEFAULT_CURRENCY);
+  const serverPrice = resolvedAdd?.price ?? variant.price ?? (variant.product?.base_price ?? 0);
 
   // Upsert: insert new item or additively merge into existing line
   await db.from("cart_items").upsert(

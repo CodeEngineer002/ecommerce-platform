@@ -3702,6 +3702,47 @@ export type Database = {
           },
         ]
       }
+      product_variant_prices: {
+        Row: {
+          compare_price: number | null
+          created_at: string
+          currency_code: string
+          id: string
+          is_active: boolean
+          price: number
+          updated_at: string
+          variant_id: string
+        }
+        Insert: {
+          compare_price?: number | null
+          created_at?: string
+          currency_code: string
+          id?: string
+          is_active?: boolean
+          price: number
+          updated_at?: string
+          variant_id: string
+        }
+        Update: {
+          compare_price?: number | null
+          created_at?: string
+          currency_code?: string
+          id?: string
+          is_active?: boolean
+          price?: number
+          updated_at?: string
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_variant_prices_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_variants: {
         Row: {
           barcode: string | null
@@ -5424,6 +5465,21 @@ export type Database = {
       reserve_inventory: {
         Args: { p_quantity: number; p_variant_id: string }
         Returns: undefined
+      }
+      resolve_variant_pricing: {
+        Args: { p_currency?: string; p_variant_id: string }
+        Returns: {
+          compare_price: number
+          price: number
+        }[]
+      }
+      resolve_variant_pricing_batch: {
+        Args: { p_currency?: string; p_variant_ids: string[] }
+        Returns: {
+          compare_price: number
+          price: number
+          variant_id: string
+        }[]
       }
       restock_returned_items: {
         Args: {

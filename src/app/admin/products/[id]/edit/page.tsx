@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ArrowLeft, DollarSign, Globe, Image as ImageIcon, Layers,
-  LayoutGrid, PackageSearch, Ruler, Save, Search,
+  LayoutGrid, PackageSearch, Ruler, Save, Search, Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -29,6 +29,7 @@ import type { ProductImage } from "@/types";
 import { computeProductStatus, STATUS_CONFIG, type AdminVariant } from "../../catalog-utils";
 
 import { InventorySection } from "../../_components/inventory-section";
+import { MarketPricesSection } from "../../_components/market-prices-section";
 import { MediaSection } from "../../_components/media-section";
 import { OverviewSection } from "../../_components/overview-section";
 import { PricingSection } from "../../_components/pricing-section";
@@ -239,6 +240,10 @@ export default function EditProductPage({ params }: Props) {
               <DollarSign className="h-3.5 w-3.5" />
               Pricing
             </TabsTrigger>
+            <TabsTrigger value="markets" className="gap-1.5">
+              <Wallet className="h-3.5 w-3.5" />
+              Market Prices
+            </TabsTrigger>
             <TabsTrigger value="seo" className="gap-1.5">
               <Search className="h-3.5 w-3.5" />
               SEO
@@ -299,6 +304,11 @@ export default function EditProductPage({ params }: Props) {
           {/* ── Pricing ──────────────────────────────────────────────────── */}
           <TabsContent value="pricing">
             <PricingSection register={register} errors={errors} />
+          </TabsContent>
+
+          {/* ── Market Prices ────────────────────────────────────────────── */}
+          <TabsContent value="markets">
+            <MarketPricesSection productId={id} variants={variants} />
           </TabsContent>
 
           {/* ── SEO ──────────────────────────────────────────────────────── */}
