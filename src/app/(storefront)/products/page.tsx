@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useState } from "react";
+import { Suspense, useCallback, useMemo, useState } from "react";
 
 import { Pagination } from "@/components/common/pagination";
 import { SearchBar } from "@/components/common/search-bar";
@@ -10,6 +10,11 @@ import { ProductGrid } from "@/components/ecommerce/product-grid";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { useCategories } from "@/features/products/hooks/use-categories";
 import { useProducts } from "@/features/products/hooks/use-products";
+import {
+  buildProductDisplayPriceMap,
+  useResolvedVariantPrices,
+} from "@/features/products/hooks/use-resolved-prices";
+import { getCurrencyForCountry } from "@/lib/i18n/region-config";
 import type { ProductFilters } from "@/types";
 
 function ProductsPageContent() {
@@ -28,6 +33,21 @@ function ProductsPageContent() {
   });
 
   const { data, isLoading, isFetching } = useProducts(filters);
+
+  // Resolve per-currency prices for every variant on the page in one RPC call.
+  // When ops hasn't set an override for a (variant, currency), the resolver
+  // falls back to the legacy variant.price column — so the card behaves
+  // identically to today's storefront for markets without per-market prices.
+  const currency = getCurrencyForCountry(countryId ?? "us");
+  const variantIds = useMemo(
+    () => (data?.data ?? []).flatMap((p) => p.variants.map((v) => v.id)),
+    [data?.data],
+  );
+  const { data: variantPriceMap } = useResolvedVariantPrices(variantIds, currency);
+  const priceMap = useMemo(() => {
+    if (!data?.data || !variantPriceMap) return undefined;
+    return buildProductDisplayPriceMap(data.data, variantPriceMap);
+  }, [data?.data, variantPriceMap]);
 
   const handleFiltersChange = useCallback((newFilters: ProductFilters) => {
     setFilters(newFilters);
@@ -87,6 +107,7 @@ function ProductsPageContent() {
                   products={data?.data ?? []}
                   loading={isLoading}
                   skeletonCount={12}
+                  priceMap={priceMap}
                 />
               </div>
               {data && data.totalPages > 1 && (

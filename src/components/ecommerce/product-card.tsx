@@ -20,9 +20,19 @@ interface ProductCardProps {
   product: ProductWithDetails;
   className?: string;
   showQuickAdd?: boolean;
+  /**
+   * Optional per-currency display price. When provided, overrides
+   * product.base_price / compare_price. ProductGrid passes these in from a
+   * resolved-prices fetch so the card reflects each customer's currency
+   * without ProductCard itself having to do an RPC.
+   */
+  displayPrice?: number;
+  displayComparePrice?: number | null;
 }
 
-export function ProductCard({ product, className, showQuickAdd = true }: ProductCardProps) {
+export function ProductCard({
+  product, className, showQuickAdd = true, displayPrice, displayComparePrice,
+}: ProductCardProps) {
   const primaryImage = product.images.find((i) => i.is_primary) ?? product.images[0];
   const defaultVariant = product.variants[0];
   const { toggleItem, hasItem } = useWishlistStore();
@@ -59,9 +69,13 @@ export function ProductCard({ product, className, showQuickAdd = true }: Product
     openCart();
   };
 
+  // Resolved per-currency price wins, then falls back to the product's
+  // legacy base/compare columns so unmigrated callers keep working.
+  const effectivePrice        = displayPrice        ?? product.base_price;
+  const effectiveComparePrice = displayComparePrice ?? product.compare_price;
   const discount =
-    product.compare_price && product.compare_price > product.base_price
-      ? Math.round(((product.compare_price - product.base_price) / product.compare_price) * 100)
+    effectiveComparePrice && effectiveComparePrice > effectivePrice
+      ? Math.round(((effectiveComparePrice - effectivePrice) / effectiveComparePrice) * 100)
       : 0;
 
   return (
@@ -139,8 +153,8 @@ export function ProductCard({ product, className, showQuickAdd = true }: Product
 
         <div className="mt-2">
           <PriceDisplay
-            price={product.base_price}
-            comparePrice={product.compare_price}
+            price={effectivePrice}
+            comparePrice={effectiveComparePrice}
             size="sm"
           />
         </div>

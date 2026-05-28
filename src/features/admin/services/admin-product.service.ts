@@ -31,7 +31,8 @@ export async function adminGetProducts(page = 1) {
       variants:product_variants(
         id, name, sku, price, is_active, is_default,
         color_code, size_code, barcode, supplier_sku, options,
-        inventory_levels(quantity, reserved)
+        inventory_levels(quantity, reserved),
+        market_prices:product_variant_prices(currency_code, price, compare_price, is_active)
       )
     `,
       { count: "exact" }

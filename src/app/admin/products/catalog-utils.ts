@@ -9,6 +9,13 @@ import { SIZE_ORDER } from "@/app/admin/inventory/shared-types";
 
 export type ProductStatus = "active" | "draft" | "archived";
 
+export interface AdminMarketPrice {
+  currency_code: string;
+  price:         number;
+  compare_price: number | null;
+  is_active:     boolean;
+}
+
 export interface AdminVariant {
   id: string;
   name: string;
@@ -20,6 +27,12 @@ export interface AdminVariant {
   size_code: string | null;
   options?: Record<string, string> | null;
   inventory_levels?: Array<{ quantity: number; reserved: number }> | null;
+  /**
+   * Per-currency price overrides joined in by admin-product.service. Empty /
+   * missing array means ops hasn't configured any per-market prices for this
+   * variant — admin list keeps using `price` as before.
+   */
+  market_prices?: AdminMarketPrice[] | null;
 }
 
 export interface AdminProductRow {
@@ -110,16 +123,38 @@ export function computeInventorySummary(variants: AdminVariant[]) {
   return { totalStock, oosCount, lowStockCount };
 }
 
+/**
+ * Compute the displayed price range for the admin product list. Mirrors the
+ * resolver's fallback chain so the admin view stays in sync with what the
+ * storefront shows for the canonical currency (USD):
+ *   1. variant's USD market_prices override (when active)
+ *   2. variant.price (legacy column)
+ *   3. product.base_price
+ *
+ * `currency` defaults to USD because the admin list is currency-agnostic —
+ * USD is the canonical "source-of-truth" currency we backfilled into
+ * product_variant_prices. Per-row callers in other currencies can pass it in.
+ */
 export function computePriceRange(
   basePrice: number,
   variants: AdminVariant[],
+  currency: string = "USD",
 ): { min: number; max: number } {
-  const prices = variants
-    .filter((v) => v.is_active && v.price !== null)
-    .map((v) => v.price as number);
+  const ccy = currency.toUpperCase();
+  const effective = variants
+    .filter((v) => v.is_active)
+    .map((v) => {
+      const override = v.market_prices?.find(
+        (m) => m.is_active && m.currency_code === ccy,
+      );
+      return override?.price ?? v.price ?? basePrice;
+    });
 
-  if (prices.length === 0) return { min: basePrice, max: basePrice };
-  return { min: Math.min(...prices, basePrice), max: Math.max(...prices, basePrice) };
+  if (effective.length === 0) return { min: basePrice, max: basePrice };
+  return {
+    min: Math.min(...effective, basePrice),
+    max: Math.max(...effective, basePrice),
+  };
 }
 
 // ── Variant matrix ────────────────────────────────────────────────────────────

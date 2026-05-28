@@ -4,11 +4,23 @@ import type { ProductWithDetails } from "@/types";
 
 import { ProductCard } from "./product-card";
 
+export type ProductGridPriceMap = Record<
+  string,
+  { price: number; compare_price: number | null }
+>;
+
 interface ProductGridProps {
   products: ProductWithDetails[];
   loading?: boolean;
   skeletonCount?: number;
   className?: string;
+  /**
+   * Optional per-product display price overrides keyed by product.id.
+   * Used by PLP / category / search grids to render the customer's currency
+   * after a client-side resolve_variant_pricing_batch fetch. Pages that
+   * don't (yet) opt in continue to show product.base_price.
+   */
+  priceMap?: ProductGridPriceMap;
 }
 
 export function ProductGrid({
@@ -16,6 +28,7 @@ export function ProductGrid({
   loading,
   skeletonCount = 8,
   className,
+  priceMap,
 }: ProductGridProps) {
   return (
     <div
@@ -28,9 +41,17 @@ export function ProductGrid({
         ? Array.from({ length: skeletonCount }).map((_, i) => (
             <ProductCardSkeleton key={i} />
           ))
-        : products.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
+        : products.map((product) => {
+            const override = priceMap?.[product.id];
+            return (
+              <ProductCard
+                key={product.id}
+                product={product}
+                displayPrice={override?.price}
+                displayComparePrice={override?.compare_price}
+              />
+            );
+          })}
     </div>
   );
 }
